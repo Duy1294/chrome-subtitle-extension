@@ -1,0 +1,350 @@
+/* --- General Styles & Dark Theme --- */
+:root {
+  --bg-color: #282c34;
+  --fg-color: #abb2bf;
+  --bg-lighter: #3a3f4b;
+  --border-color: #4b5260;
+  --accent-color: #61afef;
+  --accent-color-hover: #7bc0ff;
+  --danger-color: #e06c75;
+  --success-color: #98c379;
+  --jimaku-color: #ff9a28;
+  --kitsunekko-color: #e5c07b;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  background-color: var(--bg-color);
+  color: var(--fg-color);
+  margin: 0;
+  padding: 8px;
+  width: 380px;
+  box-sizing: border-box;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+h3 {
+  color: var(--accent-color);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 5px;
+  margin-top: 10px;
+  font-size: 1.1em;
+}
+
+i {
+  color: #7f8a9e;
+}
+
+/* --- Tabs --- */
+.tabs-nav {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tabs-nav-btn {
+  flex-grow: 1;
+  padding: 10px;
+  background-color: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--fg-color);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.tabs-nav-btn:hover {
+  background-color: var(--bg-lighter);
+}
+
+.tabs-nav-btn.active {
+  color: white;
+  border-bottom: 3px solid var(--accent-color);
+}
+
+.tab-content {
+  display: none;
+  padding: 10px;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* --- Search Tab --- */
+.search-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#search-input {
+  flex-grow: 1;
+  background-color: var(--bg-lighter);
+  border: 1px solid var(--border-color);
+  color: white;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+#search-source, #search-button {
+  background-color: var(--bg-lighter);
+  border: 1px solid var(--border-color);
+  color: var(--fg-color);
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#search-button {
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  font-weight: bold;
+}
+#search-button:hover {
+  background-color: var(--accent-color-hover);
+}
+
+#history-div {
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.history-item {
+  display: inline-block;
+  background-color: var(--bg-lighter);
+  padding: 3px 8px;
+  border-radius: 12px;
+  margin: 2px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.history-item:hover {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+#results-container {
+  margin-top: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background-color: var(--bg-lighter);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  transition: background-color 0.2s;
+}
+
+.result-title {
+  flex-grow: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 10px;
+}
+
+.result-title:hover {
+  color: var(--accent-color-hover);
+}
+
+.result-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-source {
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.source-jimaku {
+  background-color: var(--jimaku-color);
+  color: #1c1e22;
+}
+
+.source-kitsunekko {
+  background-color: var(--kitsunekko-color);
+  color: #1c1e22;
+}
+
+.action-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background-color: #4b5260;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.action-btn:hover {
+  background-color: #5f687a;
+}
+.action-btn.append-btn {
+  border-color: var(--success-color);
+  color: var(--success-color);
+  background: transparent;
+}
+.action-btn.append-btn:hover {
+  background-color: var(--success-color);
+  color: white;
+}
+
+.status-message, #apply-status {
+  text-align: center;
+  padding: 20px 0;
+  font-size: 14px;
+}
+
+.error-message {
+  color: var(--danger-color);
+  background-color: rgba(224, 108, 117, 0.1);
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+/* --- Settings Tab --- */
+.setting-group {
+  margin-bottom: 20px;
+}
+.checkbox-label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.input-group button {
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  background-color: var(--bg-lighter);
+  border: 1px solid var(--border-color);
+  color: var(--fg-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.input-group input {
+  width: 50px;
+  text-align: center;
+  background-color: var(--bg-lighter);
+  border: 1px solid var(--border-color);
+  color: white;
+  padding: 6px;
+  border-radius: 4px;
+}
+.input-group span {
+  width: 30px;
+}
+
+#apply-btn {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: bold;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+#apply-btn:hover {
+  background-color: var(--accent-color-hover);
+}
+#apply-status.success {
+    color: var(--success-color);
+}
+#apply-status.info {
+    color: var(--fg-color);
+}
+
+/* --- Transcript Tab --- */
+#transcript-container {
+  max-height: 450px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 5px;
+}
+.transcript-entry {
+  display: flex;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+  font-size: 14px;
+}
+.transcript-entry:hover {
+  background-color: var(--bg-lighter);
+}
+.timestamp {
+  font-weight: bold;
+  color: var(--accent-color);
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+.text {
+  line-height: 1.4;
+}
+
+/* --- Scrollbar Styles --- */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-color);
+}
+::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+/* --- Transcript Highlighting --- */
+.transcript-entry.highlight {
+  background-color: var(--accent-color);
+  color: #1c1e22;
+  font-weight: 500;
+}
+
+.transcript-entry.highlight .timestamp {
+  color: #1c1e22;
+}
+/* --- Transcript Highlighting --- */
+.transcript-entry.highlight {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.transcript-entry.highlight .timestamp {
+  color: white;
+}

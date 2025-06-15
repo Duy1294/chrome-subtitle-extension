@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "My Simple Subtitle Tool",
+  "version": "2.2",
+  "description": "Finds and helps download subtitles for multiple languages with a persistent UI, Furigana, and Anki support.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "offscreen",
+    "tabs",
+    "sidePanel"
+  ],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "action": {
+    "default_title": "Open Subtitle Finder"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://*.kitsunekko.net/*",
+    "https://*.jimaku.cc/*",
+    "https://jisho.org/*",
+    "http://127.0.0.1:8765/",
+    "https://translate.googleapis.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "kuromoji.js",
+        "content_script.js"
+      ],
+      "css": [
+        "content.css"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "dict/*",
+        "popup.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
