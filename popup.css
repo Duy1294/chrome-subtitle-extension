@@ -10,6 +10,7 @@
   --success-color: #98c379;
   --jimaku-color: #ff9a28;
   --kitsunekko-color: #e5c07b;
+  --opensubtitles-color: #8db84e;
 }
 
 body {
@@ -69,7 +70,7 @@ i {
 
 .tab-content {
   display: none;
-  padding: 10px;
+  padding: 10px 5px; /* Giảm padding ngang */
 }
 
 .tab-content.active {
@@ -136,15 +137,19 @@ i {
   overflow-y: auto;
 }
 
+/* --- RESULT LIST REDESIGN --- */
 .result-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
-  background-color: var(--bg-lighter);
+  padding: 6px 8px; /* Giảm padding */
   border-radius: 4px;
-  margin-bottom: 8px;
-  transition: background-color 0.2s;
+  margin-bottom: 4px; /* Giảm margin */
+  transition: background-color 0.1s;
+}
+
+.result-item:hover {
+  background-color: var(--bg-lighter);
 }
 
 .result-title {
@@ -153,7 +158,8 @@ i {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-right: 10px;
+  margin-right: 8px;
+  font-size: 13px; /* Giảm font size */
 }
 
 .result-title:hover {
@@ -163,30 +169,23 @@ i {
 .result-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px; /* Giảm khoảng cách */
 }
 
 .result-source {
-  font-size: 11px;
+  font-size: 10px; /* Giảm font size */
   font-weight: bold;
-  padding: 3px 6px;
+  padding: 2px 5px; /* Giảm padding */
   border-radius: 4px;
   text-transform: uppercase;
 }
 
-.source-jimaku {
-  background-color: var(--jimaku-color);
-  color: #1c1e22;
-}
-
-.source-kitsunekko {
-  background-color: var(--kitsunekko-color);
-  color: #1c1e22;
-}
+.source-jimaku { background-color: var(--jimaku-color); color: #1c1e22; }
+.source-kitsunekko { background-color: var(--kitsunekko-color); color: #1c1e22; }
+.source-opensubtitles { background-color: var(--opensubtitles-color); color: white; }
 
 .action-btn {
   font-size: 12px;
-  padding: 4px 8px;
   border-radius: 4px;
   border: 1px solid var(--border-color);
   background-color: #4b5260;
@@ -194,13 +193,23 @@ i {
   cursor: pointer;
   transition: background-color 0.2s;
 }
+
 .action-btn:hover {
   background-color: #5f687a;
 }
+
+/* Kiểu cho nút icon '+' */
 .action-btn.append-btn {
   border-color: var(--success-color);
   color: var(--success-color);
   background: transparent;
+  width: 24px;
+  height: 24px;
+  line-height: 22px; /* Căn giữa dấu cộng */
+  text-align: center;
+  padding: 0;
+  font-size: 18px; /* Tăng cỡ dấu cộng */
+  font-weight: bold;
 }
 .action-btn.append-btn:hover {
   background-color: var(--success-color);
@@ -329,20 +338,12 @@ i {
 ::-webkit-scrollbar-thumb:hover {
   background: #777;
 }
-/* --- Transcript Highlighting --- */
-.transcript-entry.highlight {
-  background-color: var(--accent-color);
-  color: #1c1e22;
-  font-weight: 500;
-}
 
-.transcript-entry.highlight .timestamp {
-  color: #1c1e22;
-}
 /* --- Transcript Highlighting --- */
 .transcript-entry.highlight {
   background-color: var(--accent-color);
   color: white;
+  font-weight: 500;
 }
 
 .transcript-entry.highlight .timestamp {

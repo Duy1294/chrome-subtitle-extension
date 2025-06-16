@@ -52,10 +52,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentlyHighlighted = null;
 
     // --- Functions ---
-
-    /**
-     * Converts ASS time string (H:MM:SS.ss) to SRT time string (HH:MM:SS,ms).
-     */
     function formatSrtTime(assTime) {
         const parts = assTime.split(':');
         const h = parts[0].padStart(2, '0');
@@ -66,9 +62,6 @@ document.addEventListener('DOMContentLoaded', function() {
         return `${h}:${m}:${s},${ms}`;
     }
 
-    /**
-     * Converts the entire content of an ASS file to SRT format.
-     */
     function convertAssToSrt(assText) {
         const lines = assText.split(/\r?\n/);
         const srtEntries = [];
@@ -79,15 +72,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (trimmedLine.startsWith('Dialogue:')) {
                 const parts = trimmedLine.split(',');
                 if (parts.length < 10) continue;
-
                 const startTime = parts[1].trim();
                 const endTime = parts[2].trim();
-                
                 const textContent = parts.slice(9).join(',')
-                                         .replace(/{[^}]*}/g, '') // Remove ASS styling tags
-                                         .replace(/\\N/g, '\n')     // Convert newlines
+                                         .replace(/{[^}]*}/g, '')
+                                         .replace(/\\N/g, '\n')
                                          .trim();
-
                 if (textContent) {
                     const srtStartTime = formatSrtTime(startTime);
                     const srtEndTime = formatSrtTime(endTime);
@@ -113,22 +103,22 @@ document.addEventListener('DOMContentLoaded', function() {
             const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
             const existingSub = result[SESSION_SUB_KEY] || { data: '' };
             const newSubText = existingSub.data ? (existingSub.data + '\n\n' + srtText) : srtText;
-
-            await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: newSubText } });
+            // Cập nhật lại storage với cờ isNew là false
+            await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: newSubText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(newSubText);
-            
             chrome.runtime.sendMessage({
                 action: 'applySettingsToTab',
                 settings: getSettingsFromPanel(),
-                data: srtText, // Send only the new part to be appended
+                data: srtText,
                 format: 'srt',
                 append: true
             });
             showStatusMessage(`<i style="color: var(--success-color);">✓ Subtitle appended successfully.</i>`);
         } else {
-            await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText } });
+            // Cập nhật lại storage với cờ isNew là false
+            await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(srtText);
-            await applySettingsFromPanel(true); // True indicates new data is loaded
+            await applySettingsFromPanel(true);
         }
         updateTranscriptDisplay();
     }
@@ -138,6 +128,8 @@ document.addEventListener('DOMContentLoaded', function() {
         tabContents.forEach(tab => tab.classList.toggle('active', tab.id === targetTabId));
         tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === targetTabId));
         chrome.storage.local.set({ [LAST_ACTIVE_TAB_KEY]: targetTabId });
+        // KHI CHUYỂN TAB, KIỂM TRA XEM CÓ SUB MỚI KHÔNG
+        checkAndLoadSessionSubtitle();
     }
 
     function showStatusMessage(html, isError = false) {
@@ -200,12 +192,7 @@ document.addEventListener('DOMContentLoaded', function() {
         transcriptSubtitles.forEach((sub, index) => {
             const entry = document.createElement('div');
             entry.className = 'transcript-entry';
-            
-            // SỬA ĐỔI: Thêm data-start-time để dễ dàng lấy thời gian gốc
-            // GIẢI THÍCH: Lưu trữ thời gian gốc (chưa có offset) trực tiếp vào phần tử DOM
-            // giúp việc tính toán khi click trở nên chính xác và đơn giản hơn.
             entry.dataset.startTime = sub.startTime; 
-
             entry.innerHTML = `<span class="timestamp">${formatTime(sub.startTime)}</span><span class="text">${sub.text}</span>`;
             transcriptContainer.appendChild(entry);
         });
@@ -217,13 +204,11 @@ document.addEventListener('DOMContentLoaded', function() {
             currentlyHighlighted = null;
             return;
         }
-        // SỬA ĐỔI: Sử dụng querySelector an toàn hơn
         const newHighlightElement = transcriptContainer.querySelector(`.transcript-entry[data-start-time='${transcriptSubtitles[index].startTime}']`);
         if (newHighlightElement) {
             newHighlightElement.classList.add('highlight');
             const elemRect = newHighlightElement.getBoundingClientRect();
             const containerRect = transcriptContainer.getBoundingClientRect();
-            // Scroll into view only if it's not already visible
             if (elemRect.top < containerRect.top || elemRect.bottom > containerRect.bottom) {
                  newHighlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
@@ -316,15 +301,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderSearchResults(data, errors) {
         resultsDiv.innerHTML = '';
+        if (data.length === 0 && errors.length === 0) {
+            showStatusMessage('<i>No results found.</i>');
+            return;
+        }
         showResults();
-
         if (errors && errors.length > 0) {
             const errorContainer = document.createElement('div');
             errorContainer.className = 'error-message';
             errorContainer.innerHTML = errors.map(e => `<i>- ${e}</i>`).join('<br>');
             resultsDiv.appendChild(errorContainer);
         }
-
         if (data && data.length > 0) {
             data.forEach(item => {
                 const onClick = () => {
@@ -333,32 +320,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
                 resultsDiv.appendChild(createItem(item, onClick, null));
             });
-        } else {
-            if (!errors || errors.length === 0) showStatusMessage('<i>No results found.</i>');
         }
     }
     
     function createItem(item, onLoad, onAppend) {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'result-item';
-
         const titleSpan = document.createElement('span');
         titleSpan.className = 'result-title';
         titleSpan.textContent = item.title;
         titleSpan.title = item.title;
         titleSpan.addEventListener('click', onLoad);
-
         const controlsDiv = document.createElement('div');
         controlsDiv.className = 'result-controls';
-
         const sourceSpan = document.createElement('span');
         sourceSpan.textContent = item.source.replace('.org', '');
         sourceSpan.className = `result-source source-${item.source.toLowerCase().replace('.org', '')}`;
         controlsDiv.appendChild(sourceSpan);
-
         if (onAppend) {
             const appendBtn = document.createElement('button');
-            appendBtn.textContent = 'Append';
+            appendBtn.innerHTML = '+'; // THAY ĐỔI: Sử dụng icon dấu cộng
+            appendBtn.title = 'Append Subtitle'; // THAY ĐỔI: Thêm tooltip
             appendBtn.className = 'action-btn append-btn';
             appendBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -366,7 +348,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             controlsDiv.appendChild(appendBtn);
         }
-
         itemDiv.appendChild(titleSpan);
         itemDiv.appendChild(controlsDiv);
         return itemDiv;
@@ -376,7 +357,9 @@ document.addEventListener('DOMContentLoaded', function() {
         resultsDiv.innerHTML = '';
         if (error) {
             showStatusMessage(`<div class="error-message">Error: ${error}</div>`, true);
-        } else if (data && data.length > 0) {
+            return;
+        }
+        if (data && data.length > 0) {
             showResults();
             data.forEach(item => {
                 const onEpisodeLoad = () => handleEpisodeClick(item, false);
@@ -389,56 +372,63 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function handleEpisodeClick(episodeItem, isAppending) {
-        const url = episodeItem.url;
-        if (url.toLowerCase().endsWith('.zip') || url.toLowerCase().endsWith('.rar') || episodeItem.isDirectDownload) {
-            chrome.runtime.sendMessage({ action: 'openDownloadTab', url: url });
-            showStatusMessage(`<i>Opening download tab for <b>${episodeItem.title}</b>...</i>`);
-            return;
-        }
-
         chrome.storage.session.set({ [SESSION_APPEND_KEY]: isAppending });
         const message = isAppending ? `Appending subtitle from` : `Loading subtitle from`;
         showStatusMessage(`<i>${message} <b>${episodeItem.title}</b>...</i>`);
         
-        const format = url.toLowerCase().endsWith('.ass') ? 'ass' : 'srt';
-        chrome.runtime.sendMessage({ action: 'fetchSubtitleContent', url: url, format: format });
+        // <<< SỬA ĐỔI QUAN TRỌNG
+        let format = 'srt'; // Mặc định
+        // Ưu tiên định dạng tường minh từ parser
+        if (episodeItem.format) {
+            format = episodeItem.format;
+        } else { // Nếu không có, quay lại kiểm tra URL
+            const url = episodeItem.url.toLowerCase();
+            if (url.endsWith('.ass')) {
+                format = 'ass';
+            } else if (url.includes('.zip')) {
+                format = 'zip';
+            }
+        }
+        
+        chrome.runtime.sendMessage({ action: 'fetchSubtitleContent', url: episodeItem.url, format: format });
     }
     
-    async function restoreTranscriptFromSession() {
-        const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
-        if (result[SESSION_SUB_KEY] && result[SESSION_SUB_KEY].data) {
+    async function checkAndLoadSessionSubtitle() {
+        const result = await chrome.storage.session.get(SESSION_SUB_KEY);
+        // Chỉ load nếu có dữ liệu VÀ nó được đánh dấu là mới (isNew: true)
+        if (result[SESSION_SUB_KEY] && result[SESSION_SUB_KEY].isNew) {
+            console.log("Found new subtitle data in session, loading it.");
             const subData = result[SESSION_SUB_KEY];
-            transcriptSubtitles = parseSrtForTranscript(subData.data);
-            updateTranscriptDisplay();
+            
+            const isAppending = (await chrome.storage.session.get(SESSION_APPEND_KEY))[SESSION_APPEND_KEY] || false;
+            await chrome.storage.session.remove(SESSION_APPEND_KEY);
+
+            // Gọi hàm loadSubData, hàm này sẽ tự động đánh dấu isNew: false sau khi load
+            await loadSubData(subData.data, isAppending);
         }
     }
 
     // --- Event Listeners ---
     tabButtons.forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
-
     searchButton.addEventListener('click', () => {
         clearAllSubtitleState();
         const query = searchInput.value.trim();
         if (!query) return;
+        const language = languageSelect.value; 
         showStatusMessage('<i>Searching...</i>');
         saveSearchHistory(query);
-        chrome.runtime.sendMessage({ action: 'search', query: query, source: searchSource.value });
+        chrome.runtime.sendMessage({ action: 'search', query: query, source: searchSource.value, language: language });
     });
-
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
-    
     loadFileBtn.addEventListener('click', () => fileInput.click());
-
     fileInput.addEventListener('change', (event) => {
         clearAllSubtitleState();
         const file = event.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = (e) => {
             let subText = e.target.result;
             const format = file.name.toLowerCase().endsWith('.ass') ? 'ass' : 'srt';
-
             if (format === 'ass') {
                 try {
                     subText = convertAssToSrt(subText);
@@ -450,7 +440,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
             }
-            
             loadSubData(subText, false);
             applyStatus.textContent = `✓ Loaded from file: ${file.name}`;
             applyStatus.className = 'status-message success';
@@ -465,31 +454,16 @@ document.addEventListener('DOMContentLoaded', function() {
         reader.readAsText(file);
         fileInput.value = '';
     });
-
-    // SỬA ĐỔI: Listener cho việc click vào transcript
     transcriptContainer.addEventListener('click', (e) => {
-        // GIẢI THÍCH: Sử dụng event delegation để bắt sự kiện click trên toàn bộ container.
-        // Dùng `closest` để tìm phần tử cha gần nhất có class `transcript-entry`.
         const entry = e.target.closest('.transcript-entry');
         if (entry && entry.dataset.startTime) {
-            // Lấy thời gian gốc đã lưu trong data attribute
             const originalStartTime = parseFloat(entry.dataset.startTime);
-            // Lấy giá trị offset hiện tại từ ô input
             const offset = parseFloat(offsetInput.value) || 0;
-            // Tính toán thời gian cần tua đến, có tính cả offset
             let seekTime = originalStartTime + offset;
-
-            // Đảm bảo thời gian không bị âm
-            if (seekTime < 0) {
-                seekTime = 0;
-            }
-
-            // Gửi tin nhắn đến content script để thực hiện việc tua video
+            if (seekTime < 0) seekTime = 0;
             chrome.runtime.sendMessage({ action: 'seekVideo', time: seekTime });
         }
     });
-
-    // Settings buttons
     offsetMinusBtn.addEventListener('click', () => adjustValue(offsetInput, -0.1, 1));
     offsetPlusBtn.addEventListener('click', () => adjustValue(offsetInput, 0.1, 1));
     positionDownBtn.addEventListener('click', () => adjustValue(positionInput, -1, 0));
@@ -504,31 +478,23 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (request.action === 'episodeListReady') {
             renderEpisodeList(request.data, request.error);
         } else if (request.action === 'showStatus') {
-            showStatusMessage(request.message);
-        } else if (request.action === 'subtitleContentReady') {
-            let subText = request.data;
-            const format = request.format || 'srt';
-
-            if (format === 'ass') {
-                subText = convertAssToSrt(subText);
-            }
-            
-            const { [SESSION_APPEND_KEY]: isAppending } = await chrome.storage.session.get([SESSION_APPEND_KEY]);
-            chrome.storage.session.remove([SESSION_APPEND_KEY]);
-            await loadSubData(subText, isAppending);
+            showStatusMessage(request.message, true);
         } else if (request.action === 'updateTranscriptHighlight') {
             highlightTranscriptLine(request.index);
         }
+        // Listener cho 'subtitleProcessingComplete' đã bị loại bỏ
+        // vì logic mới sẽ chủ động kiểm tra storage
     });
 
     // --- Initialization ---
     async function initialize() {
         loadSettings();
         loadSearchHistory();
-        await restoreTranscriptFromSession();
+        // Kiểm tra dữ liệu cũ từ lần mở trước
+        await checkAndLoadSessionSubtitle();
         const { [LAST_ACTIVE_TAB_KEY]: lastTab } = await chrome.storage.local.get([LAST_ACTIVE_TAB_KEY]);
         showTab(lastTab || 'search-tab');
     }
 
     initialize();
-});
+}); 

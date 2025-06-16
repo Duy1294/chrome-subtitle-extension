@@ -21,11 +21,7 @@
     "service_worker": "background.js"
   },
   "host_permissions": [
-    "https://*.kitsunekko.net/*",
-    "https://*.jimaku.cc/*",
-    "https://jisho.org/*",
-    "http://127.0.0.1:8765/",
-    "https://translate.googleapis.com/*"
+    "<all_urls>"
   ],
   "content_scripts": [
     {
@@ -46,7 +42,8 @@
     {
       "resources": [
         "dict/*",
-        "popup.css"
+        "popup.css",
+        "jszip.min.js" 
       ],
       "matches": [
         "<all_urls>"
