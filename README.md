@@ -1,5 +1,6 @@
 # chrome-subtitle-extension
 A Chrome extension to find and display multilingual subtitles with dictionary and Anki support.
+
 Hướng dẫn Cài đặt (Thủ công)
 Vì tiện ích này chưa có trên Chrome Web Store, bạn cần cài đặt thủ công theo các bước sau:
 
