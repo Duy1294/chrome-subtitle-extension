@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // --- Element References ---
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
     const resultsDiv = document.getElementById('results-div');
@@ -27,7 +26,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const backButton = document.getElementById('back-button');
     const sourceCheckboxes = document.querySelectorAll('.source-checkbox');
 
-    // --- Constants ---
     const SETTINGS_KEY = 'subtitleUserSettings';
     const SEARCH_HISTORY_KEY = 'subtitleSearchHistory';
     const SESSION_SUB_KEY = 'session_currentSubData';
@@ -47,12 +45,10 @@ document.addEventListener('DOMContentLoaded', function() {
         language: 'japanese'
     };
 
-    // --- State ---
     let transcriptSubtitles = [];
     let currentlyHighlighted = null;
     let searchResultsCache = null;
 
-    // --- Functions ---
     function formatSrtTime(assTime) {
         const parts = assTime.split(':');
         const h = parts[0].padStart(2, '0');
@@ -99,6 +95,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function loadSubData(srtText, isAppending = false) {
+        await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
+
         if (isAppending) {
             const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
             const existingSub = result[SESSION_SUB_KEY] || { data: '' };
@@ -111,6 +109,7 @@ document.addEventListener('DOMContentLoaded', function() {
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(srtText);
             await applySettingsFromPanel(true);
+            showStatusMessage(`<i style="color: var(--success-color);">✓ Subtitle loaded successfully. View in Transcript tab.</i>`);
         }
         updateTranscriptDisplay();
     }
@@ -434,7 +433,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- Event Listeners ---
     tabButtons.forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
 
     backButton.addEventListener('click', () => {
@@ -561,6 +559,8 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatusMessage(request.message, true);
         } else if (request.action === 'updateTranscriptHighlight') {
             highlightTranscriptLine(request.index);
+        } else if (request.action === 'subtitleReadyForPopup') {
+            checkAndLoadSessionSubtitle();
         }
     });
 

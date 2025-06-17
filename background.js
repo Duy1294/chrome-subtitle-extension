@@ -1,3 +1,5 @@
+// background.js
+
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ windowId: tab.windowId });
 });
@@ -37,7 +39,7 @@ const searchSources = {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'search') {
-    chrome.storage.session.remove(['session_currentSubData', 'session_isAppending']);
+    chrome.storage.session.remove(['session_currentSubData', 'session_isAppending', 'ui_lastState']);
     const { query, sources, language } = request;
     const sourcesToSearch = sources || [];
 
@@ -116,7 +118,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   
   } else if (request.action === 'unzippedSubtitleReady') {
-      chrome.storage.session.set({ 'session_currentSubData': { data: request.data, isNew: true } });
+      chrome.storage.session.set({ 'session_currentSubData': { data: request.data, isNew: true } })
+          .then(() => {
+              chrome.runtime.sendMessage({ action: 'subtitleReadyForPopup' });
+          });
+      return true;
   
   } else if (request.action === 'fetchError') {
       console.error("Background received fetch error from offscreen:", request.error);
