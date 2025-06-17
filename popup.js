@@ -1,3 +1,12 @@
+function cleanSubtitleText(text) {
+  if (!text) return '';
+  return text
+    .replace(/^\uFEFF/, '')           
+    .replace(/[\u200B-\u200F]/g, '')    
+    .replace(/&lrm;/gi, '')             
+    .replace(/&rlm;/gi, '');           
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
@@ -70,7 +79,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (parts.length < 10) continue;
                 const startTime = parts[1].trim();
                 const endTime = parts[2].trim();
-                const textContent = parts.slice(9).join(',').replace(/{[^}]*}/g, '').replace(/\\N/g, '\n').trim();
+                let textContent = parts.slice(9).join(',').replace(/{[^}]*}/g, '').replace(/\\N/g, '\n');
+                textContent = cleanSubtitleText(textContent).trim(); 
                 if (textContent) {
                     const srtStartTime = formatSrtTime(startTime);
                     const srtEndTime = formatSrtTime(endTime);
@@ -109,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(srtText);
             await applySettingsFromPanel(true);
-            showStatusMessage(`<i style="color: var(--success-color);">✓ Subtitle loaded successfully. View in Transcript tab.</i>`);
+            showStatusMessage(`<i style="color: var(--success-color);">Subtitle loaded successfully. View in Transcript tab.</i>`);
         }
         updateTranscriptDisplay();
     }
@@ -502,6 +512,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const reader = new FileReader();
         reader.onload = (e) => {
             let subText = e.target.result;
+            subText = cleanSubtitleText(subText);
             if (file.name.toLowerCase().endsWith('.ass')) {
                 subText = convertAssToSrt(subText);
             }

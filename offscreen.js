@@ -1,3 +1,12 @@
+function cleanSubtitleText(text) {
+  if (!text) return '';
+  return text
+    .replace(/^\uFEFF/, '')            
+    .replace(/[\u200B-\u200F]/g, '')   
+    .replace(/&lrm;/gi, '')             
+    .replace(/&rlm;/gi, '');           
+}
+
 function parseJimaku(doc, query) {
     const results = [];
     const lowerCaseQuery = query.toLowerCase();
@@ -180,7 +189,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
                 })
                 .then(subtitleText => {
-                    chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: subtitleText });
+                    const cleanedText = cleanSubtitleText(subtitleText);
+                    chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: cleanedText });
                 })
                 .catch(error => {
                     chrome.runtime.sendMessage({ action: 'fetchError', error: error.message });
@@ -192,7 +202,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     return response.text();
                 })
                 .then(subtitleText => {
-                    chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: subtitleText });
+                    const cleanedText = cleanSubtitleText(subtitleText);
+                    chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: cleanedText });
                 })
                 .catch(error => {
                     chrome.runtime.sendMessage({ action: 'fetchError', error: error.message });
