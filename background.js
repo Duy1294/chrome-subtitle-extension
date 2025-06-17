@@ -1,5 +1,3 @@
-// background.js
-
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ windowId: tab.windowId });
 });
@@ -14,7 +12,7 @@ async function getOrCreateOffscreenDocument() {
   });
 }
 
-function fetchWithTimeout(resource, options = {}, timeout = 8000) {
+function fetchWithTimeout(resource, options = {}, timeout = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   const promise = fetch(resource, { ...options, signal: controller.signal });
@@ -40,8 +38,9 @@ const searchSources = {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'search') {
     chrome.storage.session.remove(['session_currentSubData', 'session_isAppending']);
-    const { query, source, language } = request;
-    const sourcesToSearch = (source === 'both') ? ['jimaku', 'kitsunekko', 'opensubtitles'] : [source];
+    const { query, sources, language } = request;
+    const sourcesToSearch = sources || [];
+
     const fetchPromises = sourcesToSearch
       .filter(key => searchSources[key])
       .map(sourceKey => {
@@ -55,6 +54,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           .then(response => response.ok ? response.text() : Promise.reject(new Error(`Failed fetch from ${sourceKey}: ${response.status}`)))
           .then(htmlText => ({ htmlText, source: sourceKey, query: query }))
       });
+
     Promise.allSettled(fetchPromises)
       .then(async (results) => {
         await getOrCreateOffscreenDocument();
@@ -80,10 +80,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     return true;
 
-  // *** ĐÂY LÀ PHẦN ĐƯỢC SỬA LẠI CHO ĐÚNG ***
   } else if (request.action === 'fetchSubtitlePage') {
     const fetchOptions = {};
-    fetchWithTimeout(request.url, fetchOptions, 8000)
+    fetchWithTimeout(request.url, fetchOptions, 15000)
       .then(response => response.ok ? response.text() : Promise.reject(`Network response was not ok for ${request.url}: ${response.status}`))
       .then(async (htmlText) => {
         await getOrCreateOffscreenDocument();
@@ -92,7 +91,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         else if (request.url.includes('jimaku.cc')) source = 'jimaku';
         else if (request.url.includes('opensubtitles.org')) source = 'opensubtitles';
         
-        // Gửi hành động mới 'parseEpisodeList' cho offscreen
         chrome.runtime.sendMessage({
           action: 'parseEpisodeList',
           htmlText: htmlText,
@@ -102,7 +100,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch(error => {
         console.error(`Fetch subtitle page error for ${request.url}:`, { message: error.message, stack: error.stack });
-        chrome.runtime.sendMessage({ action: 'episodeListReady', data: [], error: `Không thể tải trang phụ đề: ${error.message}` });
+        chrome.runtime.sendMessage({ action: 'showStatus', message: `<i>Error: Could not load subtitle page: ${error.message}</i>` });
       });
     return true;
   
@@ -118,10 +116,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   
   } else if (request.action === 'unzippedSubtitleReady') {
-      console.log("Background received ready subtitle from offscreen.");
-      chrome.storage.session.set({ 'session_currentSubData': { data: request.data, isNew: true } }, () => {
-          console.log("Subtitle data saved to session storage.");
-      });
+      chrome.storage.session.set({ 'session_currentSubData': { data: request.data, isNew: true } });
   
   } else if (request.action === 'fetchError') {
       console.error("Background received fetch error from offscreen:", request.error);
@@ -157,15 +152,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             .then(response => response.ok ? response.json() : Promise.reject('Google Translate API request failed'))
             .then(json => {
                 if (json && json[0] && json[0][0] && json[0][0][0]) {
-                    const translation = json[0][0][0];
-                    const originalWord = json[0][0][1];
                     sendResponse({ 
                         success: true, 
                         source: 'google_translate', 
-                        data: {
-                            word: originalWord,
-                            translation: translation
-                        }
+                        data: { word: json[0][0][1], translation: json[0][0][0] }
                     });
                 } else {
                     Promise.reject('No translation found.');

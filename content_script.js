@@ -14,7 +14,7 @@ const defaultSettings = {
     fontSize: 2.5,
     enableFurigana: false,
     enableDictionary: false,
-    language: 'japanese' // Thêm ngôn ngữ mặc định
+    language: 'japanese' 
 };
 let observer = null;
 let dictionaryIsEnabled = false;
@@ -74,7 +74,7 @@ function getBaseText(node) {
     return clone.textContent;
 }
 
-// SỬA ĐỔI: Hiển thị kết quả từ nhiều nguồn khác nhau
+
 function renderPopupContent(word, response, container) {
     if (!response || !response.success || !response.data) {
         container.innerHTML = `<div class="dict-error">${response ? response.error : 'Unknown error.'}</div>`;
@@ -82,7 +82,7 @@ function renderPopupContent(word, response, container) {
     }
 
     let html = '';
-    // Hiển thị cho Jisho (tiếng Nhật)
+    // Hiển thị cho Jisho.org
     if (response.source === 'jisho') {
         if (response.data.data.length === 0) {
             container.innerHTML = `<div class="dict-error">No results found for "${word}" on Jisho.org.</div>`;
@@ -119,7 +119,7 @@ function renderPopupContent(word, response, container) {
     // Hiển thị cho Google Translate (các ngôn ngữ khác)
     else if (response.source === 'google_translate') {
         html += `<div class="dict-entry">`;
-        html += `<div class="dict-entry-japanese">`; // Giữ class để style tương tự
+        html += `<div class="dict-entry-japanese">`;
         html += `<span class="dict-entry-word">${response.data.word}</span>`;
         html += `</div>`;
         html += `<div class="dict-entry-sense">`;
@@ -134,7 +134,6 @@ function renderPopupContent(word, response, container) {
     container.innerHTML = html;
 }
 
-// SỬA ĐỔI: Gửi request và xử lý Anki một cách linh hoạt
 function showDictionaryPopup(word, clickedElement) {
     const existingPopup = document.getElementById('dictionary-popup-backdrop');
     if (existingPopup) existingPopup.remove();
@@ -149,7 +148,7 @@ function showDictionaryPopup(word, clickedElement) {
     header.id = 'dictionary-popup-header';
     
     const title = document.createElement('h3');
-    title.textContent = `Dictionary: ${word}`; // Title chung
+    title.textContent = `Dictionary: ${word}`;
     
     const closeBtn = document.createElement('button');
     closeBtn.id = 'dictionary-popup-close-btn';
@@ -522,8 +521,6 @@ async function addNoteToAnki(word, sentence, language, callback) {
     }
 
     try {
-        // Bước 1: Gọi AnkiConnect action để đảm bảo bộ thẻ tồn tại
-        // Lệnh này sẽ tạo deck nếu chưa có, hoặc không làm gì nếu đã có.
         await fetch('http://127.0.0.1:8765', {
             method: 'POST',
             body: JSON.stringify({
@@ -547,7 +544,6 @@ async function addNoteToAnki(word, sentence, language, callback) {
             ]
         };
 
-        // Bước 2: Thêm ghi chú
         const addNoteResponse = await fetch('http://127.0.0.1:8765', {
             method: 'POST',
             body: JSON.stringify({

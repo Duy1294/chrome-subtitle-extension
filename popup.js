@@ -1,14 +1,10 @@
-// popup.js
-
 document.addEventListener('DOMContentLoaded', function() {
     // --- Element References ---
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
-    const searchSource = document.getElementById('search-source');
     const resultsDiv = document.getElementById('results-div');
     const historyDiv = document.getElementById('history-div');
     const statusMessageDiv = document.getElementById('status-message');
-    
     const applyBtn = document.getElementById('apply-btn');
     const applyStatus = document.getElementById('apply-status');
     const offsetInput = document.getElementById('offset-input');
@@ -23,13 +19,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const furiganaToggle = document.getElementById('furigana-toggle');
     const dictionaryToggle = document.getElementById('dictionary-toggle');
     const languageSelect = document.getElementById('language-select');
-
     const loadFileBtn = document.getElementById('load-file-btn');
     const fileInput = document.getElementById('file-input');
-
     const tabButtons = document.querySelectorAll('.tabs-nav-btn');
     const tabContents = document.querySelectorAll('.tab-content');
     const transcriptContainer = document.getElementById('transcript-container');
+    const backButton = document.getElementById('back-button');
+    const sourceCheckboxes = document.querySelectorAll('.source-checkbox');
 
     // --- Constants ---
     const SETTINGS_KEY = 'subtitleUserSettings';
@@ -37,6 +33,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const SESSION_SUB_KEY = 'session_currentSubData';
     const SESSION_APPEND_KEY = 'session_isAppending';
     const LAST_ACTIVE_TAB_KEY = 'lastActiveSubtitleTab';
+    const SELECTED_SOURCES_KEY = 'selectedSubtitleSources';
+    const UI_STATE_KEY = 'ui_lastState';
+    const LAST_SEARCH_TIME_KEY = 'lastSearchTimestamp';
+    const SEARCH_COOLDOWN = 5000;
 
     const defaultSettings = { 
         offset: 0, 
@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- State ---
     let transcriptSubtitles = [];
     let currentlyHighlighted = null;
+    let searchResultsCache = null;
 
     // --- Functions ---
     function formatSrtTime(assTime) {
@@ -66,7 +67,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const lines = assText.split(/\r?\n/);
         const srtEntries = [];
         let srtIndex = 1;
-
         for (const line of lines) {
             const trimmedLine = line.trim();
             if (trimmedLine.startsWith('Dialogue:')) {
@@ -74,10 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (parts.length < 10) continue;
                 const startTime = parts[1].trim();
                 const endTime = parts[2].trim();
-                const textContent = parts.slice(9).join(',')
-                                         .replace(/{[^}]*}/g, '')
-                                         .replace(/\\N/g, '\n')
-                                         .trim();
+                const textContent = parts.slice(9).join(',').replace(/{[^}]*}/g, '').replace(/\\N/g, '\n').trim();
                 if (textContent) {
                     const srtStartTime = formatSrtTime(startTime);
                     const srtEndTime = formatSrtTime(endTime);
@@ -89,8 +86,11 @@ document.addEventListener('DOMContentLoaded', function() {
         return srtEntries.join('\n\n');
     }
     
-    function clearAllSubtitleState() {
-        chrome.storage.session.remove(SESSION_SUB_KEY);
+    function clearAllSubtitleState(isNewSearch = false) {
+        chrome.storage.session.remove([SESSION_SUB_KEY]);
+        if (isNewSearch) {
+            chrome.storage.session.remove([UI_STATE_KEY]);
+        }
         transcriptSubtitles = [];
         updateTranscriptDisplay();
         chrome.runtime.sendMessage({ action: 'clearSubtitles' });
@@ -103,19 +103,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
             const existingSub = result[SESSION_SUB_KEY] || { data: '' };
             const newSubText = existingSub.data ? (existingSub.data + '\n\n' + srtText) : srtText;
-            // Cập nhật lại storage với cờ isNew là false
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: newSubText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(newSubText);
-            chrome.runtime.sendMessage({
-                action: 'applySettingsToTab',
-                settings: getSettingsFromPanel(),
-                data: srtText,
-                format: 'srt',
-                append: true
-            });
+            chrome.runtime.sendMessage({ action: 'applySettingsToTab', settings: getSettingsFromPanel(), data: srtText, format: 'srt', append: true });
             showStatusMessage(`<i style="color: var(--success-color);">✓ Subtitle appended successfully.</i>`);
         } else {
-            // Cập nhật lại storage với cờ isNew là false
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(srtText);
             await applySettingsFromPanel(true);
@@ -128,7 +120,6 @@ document.addEventListener('DOMContentLoaded', function() {
         tabContents.forEach(tab => tab.classList.toggle('active', tab.id === targetTabId));
         tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === targetTabId));
         chrome.storage.local.set({ [LAST_ACTIVE_TAB_KEY]: targetTabId });
-        // KHI CHUYỂN TAB, KIỂM TRA XEM CÓ SUB MỚI KHÔNG
         checkAndLoadSessionSubtitle();
     }
 
@@ -248,7 +239,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function loadSettings() {
-        chrome.storage.local.get([SETTINGS_KEY], (result) => {
+        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
             const currentSettings = { ...defaultSettings, ...savedSettings };
             offsetInput.value = currentSettings.offset.toFixed(1);
@@ -257,6 +248,15 @@ document.addEventListener('DOMContentLoaded', function() {
             furiganaToggle.checked = currentSettings.enableFurigana;
             dictionaryToggle.checked = currentSettings.enableDictionary;
             languageSelect.value = currentSettings.language;
+
+            const savedSources = result[SELECTED_SOURCES_KEY];
+            if (savedSources && savedSources.length > 0) {
+                sourceCheckboxes.forEach(cb => {
+                    cb.checked = savedSources.includes(cb.value);
+                });
+            } else {
+                sourceCheckboxes.forEach(cb => cb.checked = true);
+            }
         });
     }
 
@@ -315,7 +315,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (data && data.length > 0) {
             data.forEach(item => {
                 const onClick = () => {
-                    showStatusMessage(`<i>Loading subtitle page for <b>${item.title}</b>...</i>`);
+                    showStatusMessage(`<i>Loading list for <b>${item.title}</b>...</i>`);
                     chrome.runtime.sendMessage({ action: 'fetchSubtitlePage', url: item.url });
                 };
                 resultsDiv.appendChild(createItem(item, onClick, null));
@@ -326,21 +326,33 @@ document.addEventListener('DOMContentLoaded', function() {
     function createItem(item, onLoad, onAppend) {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'result-item';
+        itemDiv.addEventListener('click', onLoad);
+
+        const mainInfoDiv = document.createElement('div');
+        mainInfoDiv.className = 'result-main-info';
+
         const titleSpan = document.createElement('span');
         titleSpan.className = 'result-title';
         titleSpan.textContent = item.title;
-        titleSpan.title = item.title;
-        titleSpan.addEventListener('click', onLoad);
+        titleSpan.title = item.title; 
+        mainInfoDiv.appendChild(titleSpan);
+
+        itemDiv.appendChild(mainInfoDiv);
+        
         const controlsDiv = document.createElement('div');
         controlsDiv.className = 'result-controls';
-        const sourceSpan = document.createElement('span');
-        sourceSpan.textContent = item.source.replace('.org', '');
-        sourceSpan.className = `result-source source-${item.source.toLowerCase().replace('.org', '')}`;
-        controlsDiv.appendChild(sourceSpan);
+        
+        if (item.source) {
+            const sourceSpan = document.createElement('span');
+            sourceSpan.textContent = item.source.replace('.org', '');
+            sourceSpan.className = `result-source source-${item.source.toLowerCase().replace('.org', '')}`;
+            controlsDiv.appendChild(sourceSpan);
+        }
+
         if (onAppend) {
             const appendBtn = document.createElement('button');
-            appendBtn.innerHTML = '+'; // THAY ĐỔI: Sử dụng icon dấu cộng
-            appendBtn.title = 'Append Subtitle'; // THAY ĐỔI: Thêm tooltip
+            appendBtn.innerHTML = '+';
+            appendBtn.title = 'Append Subtitle';
             appendBtn.className = 'action-btn append-btn';
             appendBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -348,7 +360,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             controlsDiv.appendChild(appendBtn);
         }
-        itemDiv.appendChild(titleSpan);
+        
         itemDiv.appendChild(controlsDiv);
         return itemDiv;
     }
@@ -367,7 +379,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 resultsDiv.appendChild(createItem(item, onEpisodeLoad, onEpisodeAppend));
             });
         } else {
-            showStatusMessage('<i>No episodes found on this page.</i>');
+            showStatusMessage('<i>No subtitle files found on this page.</i>');
         }
     }
     
@@ -376,12 +388,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const message = isAppending ? `Appending subtitle from` : `Loading subtitle from`;
         showStatusMessage(`<i>${message} <b>${episodeItem.title}</b>...</i>`);
         
-        // <<< SỬA ĐỔI QUAN TRỌNG
-        let format = 'srt'; // Mặc định
-        // Ưu tiên định dạng tường minh từ parser
+        let format = 'srt';
         if (episodeItem.format) {
             format = episodeItem.format;
-        } else { // Nếu không có, quay lại kiểm tra URL
+        } else {
             const url = episodeItem.url.toLowerCase();
             if (url.endsWith('.ass')) {
                 format = 'ass';
@@ -395,50 +405,107 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function checkAndLoadSessionSubtitle() {
         const result = await chrome.storage.session.get(SESSION_SUB_KEY);
-        // Chỉ load nếu có dữ liệu VÀ nó được đánh dấu là mới (isNew: true)
         if (result[SESSION_SUB_KEY] && result[SESSION_SUB_KEY].isNew) {
-            console.log("Found new subtitle data in session, loading it.");
             const subData = result[SESSION_SUB_KEY];
-            
             const isAppending = (await chrome.storage.session.get(SESSION_APPEND_KEY))[SESSION_APPEND_KEY] || false;
             await chrome.storage.session.remove(SESSION_APPEND_KEY);
-
-            // Gọi hàm loadSubData, hàm này sẽ tự động đánh dấu isNew: false sau khi load
             await loadSubData(subData.data, isAppending);
+        }
+    }
+
+    async function restoreLastUiState() {
+        const result = await chrome.storage.session.get(UI_STATE_KEY);
+        const state = result[UI_STATE_KEY];
+        if (!state) {
+            showStatusMessage('<i>Enter a name and click Search.</i>');
+            return;
+        }
+        searchResultsCache = state.backButtonCache;
+        if (state.view === 'episodeList') {
+            renderEpisodeList(state.data, state.error);
+            if (searchResultsCache) {
+                backButton.style.display = 'block';
+            }
+        } else if (state.view === 'searchResults') {
+            renderSearchResults(state.data, state.errors);
+            backButton.style.display = 'none';
+        } else {
+            showStatusMessage('<i>Enter a name and click Search.</i>');
         }
     }
 
     // --- Event Listeners ---
     tabButtons.forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
-    searchButton.addEventListener('click', () => {
-        clearAllSubtitleState();
+
+    backButton.addEventListener('click', () => {
+        if (searchResultsCache) {
+            renderSearchResults(searchResultsCache.data, searchResultsCache.errors);
+            chrome.storage.session.set({ [UI_STATE_KEY]: {
+                view: 'searchResults',
+                data: searchResultsCache.data,
+                errors: searchResultsCache.errors,
+                backButtonCache: null
+            }});
+            backButton.style.display = 'none';
+        }
+    });
+
+    searchButton.addEventListener('click', async () => {
+        const { [LAST_SEARCH_TIME_KEY]: lastSearchTimestamp = 0 } = await chrome.storage.local.get(LAST_SEARCH_TIME_KEY);
+        const now = Date.now();
+        if (now - lastSearchTimestamp < SEARCH_COOLDOWN) {
+            const timeLeft = Math.ceil((SEARCH_COOLDOWN - (now - lastSearchTimestamp)) / 1000);
+            showStatusMessage(`<i>Too many requests. Please wait ${timeLeft} seconds.</i>`, true);
+            return;
+        }
+
         const query = searchInput.value.trim();
         if (!query) return;
+        
+        clearAllSubtitleState(true);
+        searchResultsCache = null;
+        backButton.style.display = 'none';
+
+        const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+        if (selectedSources.length === 0) {
+            showStatusMessage('<i>Please select at least one source.</i>', true);
+            return;
+        }
+        
+        await chrome.storage.local.set({ [LAST_SEARCH_TIME_KEY]: now });
+        
         const language = languageSelect.value; 
         showStatusMessage('<i>Searching...</i>');
         saveSearchHistory(query);
-        chrome.runtime.sendMessage({ action: 'search', query: query, source: searchSource.value, language: language });
+        chrome.runtime.sendMessage({ action: 'search', query: query, sources: selectedSources, language: language });
     });
+    
+    searchInput.addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            searchButton.click();
+        }
+    });
+    
+    sourceCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+            chrome.storage.local.set({ [SELECTED_SOURCES_KEY]: selectedSources });
+        });
+    });
+
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
     loadFileBtn.addEventListener('click', () => fileInput.click());
+    
     fileInput.addEventListener('change', (event) => {
-        clearAllSubtitleState();
+        clearAllSubtitleState(true);
         const file = event.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (e) => {
             let subText = e.target.result;
-            const format = file.name.toLowerCase().endsWith('.ass') ? 'ass' : 'srt';
-            if (format === 'ass') {
-                try {
-                    subText = convertAssToSrt(subText);
-                } catch (error) {
-                    console.error("ASS to SRT conversion failed:", error);
-                    applyStatus.textContent = `Error converting ASS file. See console.`;
-                    applyStatus.className = 'status-message error-message';
-                    applyStatus.style.display = 'block';
-                    return;
-                }
+            if (file.name.toLowerCase().endsWith('.ass')) {
+                subText = convertAssToSrt(subText);
             }
             loadSubData(subText, false);
             applyStatus.textContent = `✓ Loaded from file: ${file.name}`;
@@ -446,14 +513,10 @@ document.addEventListener('DOMContentLoaded', function() {
             applyStatus.style.display = 'block';
             setTimeout(() => { applyStatus.style.display = 'none'; }, 4000);
         };
-        reader.onerror = () => {
-            applyStatus.textContent = `Error reading file: ${reader.error}`;
-            applyStatus.className = 'status-message error-message';
-            applyStatus.style.display = 'block';
-        };
         reader.readAsText(file);
         fileInput.value = '';
     });
+
     transcriptContainer.addEventListener('click', (e) => {
         const entry = e.target.closest('.transcript-entry');
         if (entry && entry.dataset.startTime) {
@@ -464,6 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
             chrome.runtime.sendMessage({ action: 'seekVideo', time: seekTime });
         }
     });
+
     offsetMinusBtn.addEventListener('click', () => adjustValue(offsetInput, -0.1, 1));
     offsetPlusBtn.addEventListener('click', () => adjustValue(offsetInput, 0.1, 1));
     positionDownBtn.addEventListener('click', () => adjustValue(positionInput, -1, 0));
@@ -471,30 +535,46 @@ document.addEventListener('DOMContentLoaded', function() {
     fontsizeMinusBtn.addEventListener('click', () => adjustValue(fontsizeInput, -0.1, 1));
     fontsizePlusBtn.addEventListener('click', () => adjustValue(fontsizeInput, 0.1, 1));
 
-    // --- Message Listener ---
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (request.action === 'searchResults') {
+            searchResultsCache = { data: request.data, errors: request.errors };
             renderSearchResults(request.data, request.errors);
+            backButton.style.display = 'none';
+            chrome.storage.session.set({ [UI_STATE_KEY]: { 
+                view: 'searchResults', 
+                data: request.data, 
+                errors: request.errors, 
+                backButtonCache: null 
+            }});
         } else if (request.action === 'episodeListReady') {
             renderEpisodeList(request.data, request.error);
+            if (searchResultsCache) {
+                backButton.style.display = 'block';
+            }
+            chrome.storage.session.set({ [UI_STATE_KEY]: { 
+                view: 'episodeList', 
+                data: request.data, 
+                error: request.error, 
+                backButtonCache: searchResultsCache 
+            }});
         } else if (request.action === 'showStatus') {
             showStatusMessage(request.message, true);
         } else if (request.action === 'updateTranscriptHighlight') {
             highlightTranscriptLine(request.index);
         }
-        // Listener cho 'subtitleProcessingComplete' đã bị loại bỏ
-        // vì logic mới sẽ chủ động kiểm tra storage
     });
 
-    // --- Initialization ---
     async function initialize() {
         loadSettings();
         loadSearchHistory();
-        // Kiểm tra dữ liệu cũ từ lần mở trước
         await checkAndLoadSessionSubtitle();
         const { [LAST_ACTIVE_TAB_KEY]: lastTab } = await chrome.storage.local.get([LAST_ACTIVE_TAB_KEY]);
         showTab(lastTab || 'search-tab');
+        
+        if ((lastTab || 'search-tab') === 'search-tab') {
+            await restoreLastUiState();
+        }
     }
 
     initialize();
-}); 
+});

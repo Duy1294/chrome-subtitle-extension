@@ -15,15 +15,17 @@
       <div id="search-tab" class="tab-content active">
         <div class="search-container">
           <input id="search-input" type="text" placeholder="Enter anime name...">
-          <select id="search-source">
-            <option value="both">All Sources</option>
-            <option value="jimaku">Jimaku</option>
-            <option value="kitsunekko">Kitsunekko</option>
-            <option value="opensubtitles">OpenSubtitles</option>
-          </select>
+          <div id="source-container">
+            <label><input type="checkbox" class="source-checkbox" value="jimaku"> Jimaku</label>
+            <label><input type="checkbox" class="source-checkbox" value="kitsunekko"> Kitsunekko</label>
+            <label><input type="checkbox" class="source-checkbox" value="opensubtitles"> OpenSubtitles</label>
+          </div>
           <button id="search-button">Search</button>
         </div>
         <div id="history-div"></div>
+        
+        <button id="back-button" class="action-btn">&larr; Back to results</button>
+
         <div id="results-container">
           <div id="results-div"></div>
           <div id="status-message" class="status-message">
@@ -35,15 +37,14 @@
       <div id="settings-tab" class="tab-content">
         <div class="setting-group">
             <h3>Local Subtitle</h3>
-            <button id="load-file-btn" style="width: 100%; padding: 10px; font-size: 14px; margin-bottom: 10px;">Load .srt/.ass from File</button>
+            <button id="load-file-btn" class="action-btn wide-btn">Load .srt/.ass from File</button>
             <input type="file" id="file-input" accept=".srt,.ass" style="display: none;">
         </div>
-
         <div class="setting-group">
           <h3>Language Settings</h3>
           <div class="setting-row">
             <label for="language-select">Subtitle Language</label>
-            <select id="language-select" style="background-color: var(--bg-lighter); border: 1px solid var(--border-color); color: var(--fg-color); padding: 6px; border-radius: 4px;">
+            <select id="language-select">
               <option value="japanese">Japanese</option>
               <option value="german">German</option>
               <option value="english">English</option>
@@ -91,7 +92,7 @@
             </div>
           </div>
         </div>
-        <button id="apply-btn">Apply to Video</button>
+        <button id="apply-btn" class="action-btn wide-btn">Apply to Video</button>
         <div id="apply-status" class="status-message" style="display: none;"></div>
       </div>
 
