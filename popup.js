@@ -36,6 +36,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const panelHeightMinusBtn = document.getElementById('panel-height-minus');
     const panelHeightPlusBtn = document.getElementById('panel-height-plus');
     const resetSettingsBtn = document.getElementById('reset-settings-btn');
+    const filterContainer = document.getElementById('filter-container');
+    const filterInput = document.getElementById('filter-input');
+
+    filterInput.addEventListener('input', () => {
+        const filterText = filterInput.value.toLowerCase();
+        const resultItems = resultsDiv.querySelectorAll('.result-item');
+        
+        resultItems.forEach(item => {
+            const title = item.querySelector('.result-title').textContent.toLowerCase();
+            if (title.includes(filterText)) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
 
     if (resetSettingsBtn) {
         resetSettingsBtn.addEventListener('click', function() {
@@ -120,6 +136,8 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.runtime.sendMessage({ action: 'clearSubtitles' });
         resultsDiv.innerHTML = '';
         showStatusMessage('<i>Enter a name and click Search.</i>');
+        filterContainer.style.display = 'none';
+        filterInput.value = '';
     }
 
     async function loadSubData(srtText, isAppending = false) {
@@ -157,6 +175,8 @@ document.addEventListener('DOMContentLoaded', function() {
         statusMessageDiv.innerHTML = html;
         if (isError) statusMessageDiv.firstElementChild?.classList.add("error-message");
         statusMessageDiv.style.display = 'block';
+        filterContainer.style.display = 'none';
+        filterInput.value = '';
     }
 
     function showResults() {
@@ -400,6 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
                 resultsDiv.appendChild(createItem(item, onClick, null));
             });
+            filterContainer.style.display = 'block';
         }
     }
 
@@ -416,6 +437,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const onEpisodeAppend = () => handleEpisodeClick(item, true);
                 resultsDiv.appendChild(createItem(item, onEpisodeLoad, onEpisodeAppend));
             });
+            filterContainer.style.display = 'block';
         } else {
             showStatusMessage('<i>No subtitle files found on this page.</i>');
         }
@@ -556,9 +578,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (request.action === 'searchResults') {
-            searchResultsCache = { data: request.data, errors: request.errors };
             renderSearchResults(request.data, request.errors);
-            backButton.style.display = 'none';
             chrome.storage.session.set({ [UI_STATE_KEY]: {
                 view: 'searchResults',
                 data: request.data,

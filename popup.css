@@ -159,6 +159,16 @@ main {
   margin-bottom: 8px;
 }
 
+#filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--bg-lighter);
+  border: 1px solid var(--border-color);
+  color: white;
+  padding: 8px;
+  border-radius: 4px;
+}
+
 #results-container {
   overflow-y: auto;
   overflow-x: auto;
