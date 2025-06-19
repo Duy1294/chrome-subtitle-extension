@@ -1,15 +1,13 @@
-/* --- Furigana Styles --- */
 ruby rt {
   font-size: 0.5em;
   color: #ddd;
   user-select: none;
 }
 
-/* --- Dictionary Styles --- */
 .vocab-word {
   cursor: pointer;
   transition: background-color 0.2s ease;
-  background-color: transparent; /* Explicitly set transparent */
+  background-color: transparent;
 }
 
 .vocab-word:hover {
@@ -23,7 +21,7 @@ ruby rt {
   width: 100vw;
   height: 100vh;
   background-color: rgba(0, 0, 0, 0.5);
-  z-index: 2147483647; /* Highest z-index */
+  z-index: 2147483647;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -116,7 +114,7 @@ ruby rt {
 
 .dict-entry-pos {
   font-style: italic;
-  color: #006400; /* Dark green */
+  color: #006400;
   font-size: 14px;
 }
 
@@ -134,8 +132,8 @@ ruby rt {
   color: #777;
 }
 
-/* --- Custom Subtitle Container --- */
 #custom-subtitle-container {
+  font-family: "UD Digi Kyokasho-tai", "Yu Kyokasho-tai", "Kyokasho-tai", sans-serif;
   user-select: text !important;
   -webkit-user-select: text !important;
 }

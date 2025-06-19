@@ -25,6 +25,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const transcriptContainer = document.getElementById('transcript-container');
     const backButton = document.getElementById('back-button');
     const sourceCheckboxes = document.querySelectorAll('.source-checkbox');
+    const moveOnPauseToggle = document.getElementById('move-on-pause-toggle');
+    const backgroundStyleSelect = document.getElementById('background-style-select');
+    const panelWidthRow = document.getElementById('panel-width-row');
+    const panelWidthInput = document.getElementById('panel-width-input');
+    const panelWidthMinusBtn = document.getElementById('panel-width-minus');
+    const panelWidthPlusBtn = document.getElementById('panel-width-plus');
+    const panelHeightRow = document.getElementById('panel-height-row');
+    const panelHeightInput = document.getElementById('panel-height-input');
+    const panelHeightMinusBtn = document.getElementById('panel-height-minus');
+    const panelHeightPlusBtn = document.getElementById('panel-height-plus');
 
     const SETTINGS_KEY = 'subtitleUserSettings';
     const SEARCH_HISTORY_KEY = 'subtitleSearchHistory';
@@ -36,13 +46,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const LAST_SEARCH_TIME_KEY = 'lastSearchTimestamp';
     const SEARCH_COOLDOWN = 5000;
 
-    const defaultSettings = { 
-        offset: 0, 
-        position: 5, 
-        fontSize: 2.5, 
-        enableFurigana: false, 
+    const defaultSettings = {
+        offset: 0,
+        position: 5,
+        fontSize: 2.5,
+        enableFurigana: false,
         enableDictionary: false,
-        language: 'japanese'
+        language: 'japanese',
+        moveOnPause: false,
+        backgroundStyle: 'default',
+        panelWidth: 90,
+        panelHeight: 80
     };
 
     let transcriptSubtitles = [];
@@ -50,16 +64,13 @@ document.addEventListener('DOMContentLoaded', function() {
     let searchResultsCache = null;
 
     fileInput.addEventListener('change', (event) => {
-    clearAllSubtitleState(true);
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const rawText = e.target.result;
-        try {
-            console.log("--- BẮT ĐẦU DEBUG FILE SSA ---"); // Dòng log 1
-            console.log("Nội dung file gốc:", rawText);    // Dòng log 2
-            
+        clearAllSubtitleState(true);
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const rawText = e.target.result;
+            try {
                 const captions = subsrt.parse(rawText);
                 const srtText = subsrt.build(captions, { format: 'srt' });
                 loadSubData(srtText, false);
@@ -67,7 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 applyStatus.className = 'status-message success';
                 applyStatus.style.display = 'block';
                 setTimeout(() => { applyStatus.style.display = 'none'; }, 4000);
-            } catch(error) {
+            } catch (error) {
                 showStatusMessage(`<i>Error: Could not process file. It may be invalid or unsupported.</i>`, true);
                 console.error("Error processing local file:", error);
             }
@@ -75,7 +86,7 @@ document.addEventListener('DOMContentLoaded', function() {
         reader.readAsText(file);
         fileInput.value = '';
     });
-    
+
     function clearAllSubtitleState(isNewSearch = false) {
         chrome.storage.session.remove([SESSION_SUB_KEY]);
         if (isNewSearch) {
@@ -95,7 +106,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const newSubText = existingSub.data ? (existingSub.data + '\n\n' + srtText) : srtText;
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: newSubText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(newSubText);
-            chrome.runtime.sendMessage({ action: 'applySettingsToTab', settings: getSettingsFromPanel(), data: srtText, format: 'srt', append: true });
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0] && tabs[0].id) {
+                    chrome.tabs.sendMessage(tabs[0].id, { action: 'displaySubtitles', settings: getSettingsFromPanel(), data: srtText, format: 'srt', append: true });
+                }
+            });
             showStatusMessage(`<i style="color: var(--success-color);">Subtitle appended successfully.</i>`);
         } else {
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
@@ -111,14 +126,13 @@ document.addEventListener('DOMContentLoaded', function() {
         tabContents.forEach(tab => tab.classList.toggle('active', tab.id === targetTabId));
         tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === targetTabId));
         chrome.storage.local.set({ [LAST_ACTIVE_TAB_KEY]: targetTabId });
-        checkAndLoadSessionSubtitle();
     }
 
     function showStatusMessage(html, isError = false) {
         resultsDiv.innerHTML = '';
         resultsDiv.style.display = 'none';
         statusMessageDiv.innerHTML = html;
-        if(isError) statusMessageDiv.firstElementChild?.classList.add("error-message");
+        if (isError) statusMessageDiv.firstElementChild?.classList.add("error-message");
         statusMessageDiv.style.display = 'block';
     }
 
@@ -127,7 +141,7 @@ document.addEventListener('DOMContentLoaded', function() {
         statusMessageDiv.style.display = 'none';
         resultsDiv.style.display = 'block';
     }
-    
+
     function timeToSeconds(timeStr) {
         const timeRegex = /(?:(\d+):)?(\d+):(\d+)[,.](\d+)/;
         const match = timeStr.match(timeRegex);
@@ -139,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const fraction = parseInt(fracStr, 10) / Math.pow(10, fracStr.length);
         return (hours * 3600) + (minutes * 60) + seconds + fraction;
     }
-    
+
     function parseSrtForTranscript(srtText) {
         const subtitles = [];
         if (!srtText) return subtitles;
@@ -175,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function() {
         transcriptSubtitles.forEach((sub, index) => {
             const entry = document.createElement('div');
             entry.className = 'transcript-entry';
-            entry.dataset.startTime = sub.startTime; 
+            entry.dataset.startTime = sub.startTime;
             entry.innerHTML = `<span class="timestamp">${formatTime(sub.startTime)}</span><span class="text">${sub.text}</span>`;
             transcriptContainer.appendChild(entry);
         });
@@ -193,12 +207,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const elemRect = newHighlightElement.getBoundingClientRect();
             const containerRect = transcriptContainer.getBoundingClientRect();
             if (elemRect.top < containerRect.top || elemRect.bottom > containerRect.bottom) {
-                 newHighlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                newHighlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
             currentlyHighlighted = newHighlightElement;
         }
     }
-    
+
     function getSettingsFromPanel() {
         return {
             offset: parseFloat(offsetInput.value) || 0,
@@ -206,7 +220,11 @@ document.addEventListener('DOMContentLoaded', function() {
             fontSize: parseFloat(fontsizeInput.value) || 2.5,
             enableFurigana: furiganaToggle.checked,
             enableDictionary: dictionaryToggle.checked,
-            language: languageSelect.value
+            language: languageSelect.value,
+            moveOnPause: moveOnPauseToggle.checked,
+            backgroundStyle: backgroundStyleSelect.value,
+            panelWidth: parseInt(panelWidthInput.value, 10) || 90,
+            panelHeight: parseInt(panelHeightInput.value, 10) || 80
         };
     }
 
@@ -216,20 +234,27 @@ document.addEventListener('DOMContentLoaded', function() {
         applyStatus.className = 'status-message success';
         applyStatus.style.display = 'block';
         setTimeout(() => { applyStatus.style.display = 'none'; }, 3000);
-        
+
         chrome.storage.local.set({ [SETTINGS_KEY]: settings });
-        
-        const message = { action: 'applySettingsToTab', settings: settings };
-        if (newDataLoaded) {
-            const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
-            if (result[SESSION_SUB_KEY] && result[SESSION_SUB_KEY].data) {
-                 message.data = result[SESSION_SUB_KEY].data;
-                 message.format = 'srt';
+
+        chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+            if (tabs[0] && tabs[0].id) {
+                const message = {
+                    action: 'displaySubtitles',
+                    settings: settings
+                };
+                if (newDataLoaded) {
+                    const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
+                    if (result[SESSION_SUB_KEY] && result[SESSION_SUB_KEY].data) {
+                        message.data = result[SESSION_SUB_KEY].data;
+                        message.format = 'srt';
+                    }
+                }
+                chrome.tabs.sendMessage(tabs[0].id, message);
             }
-        }
-        chrome.runtime.sendMessage(message);
+        });
     }
-    
+
     function loadSettings() {
         chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
@@ -240,6 +265,11 @@ document.addEventListener('DOMContentLoaded', function() {
             furiganaToggle.checked = currentSettings.enableFurigana;
             dictionaryToggle.checked = currentSettings.enableDictionary;
             languageSelect.value = currentSettings.language;
+            moveOnPauseToggle.checked = currentSettings.moveOnPause;
+            backgroundStyleSelect.value = currentSettings.backgroundStyle;
+            panelWidthInput.value = currentSettings.panelWidth;
+            panelHeightInput.value = currentSettings.panelHeight;
+            togglePanelSettings();
 
             const savedSources = result[SELECTED_SOURCES_KEY];
             if (savedSources && savedSources.length > 0) {
@@ -283,12 +313,47 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    
+
     function adjustValue(inputElement, amount, precision) {
-        let currentValue = parseFloat(inputElement.value) || 0;
-        currentValue += amount;
+        let currentValue = (precision === 0) ? parseInt(inputElement.value, 10) : parseFloat(inputElement.value);
+        currentValue = (currentValue || 0) + amount;
         if (currentValue < 0 && inputElement.id !== 'offset-input') currentValue = 0;
         inputElement.value = currentValue.toFixed(precision);
+    }
+    
+    function createItem(item, onLoad, onAppend) {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'result-item';
+        itemDiv.addEventListener('click', onLoad);
+        const mainInfoDiv = document.createElement('div');
+        mainInfoDiv.className = 'result-main-info';
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'result-title';
+        titleSpan.textContent = item.title;
+        titleSpan.title = item.title;
+        mainInfoDiv.appendChild(titleSpan);
+        itemDiv.appendChild(mainInfoDiv);
+        const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'result-controls';
+        if (item.source) {
+            const sourceSpan = document.createElement('span');
+            sourceSpan.textContent = item.source.replace('.org', '');
+            sourceSpan.className = `result-source source-${item.source.toLowerCase().replace('.org', '')}`;
+            controlsDiv.appendChild(sourceSpan);
+        }
+        if (onAppend) {
+            const appendBtn = document.createElement('button');
+            appendBtn.innerHTML = '+';
+            appendBtn.title = 'Append Subtitle';
+            appendBtn.className = 'action-btn append-btn';
+            appendBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                onAppend();
+            });
+            controlsDiv.appendChild(appendBtn);
+        }
+        itemDiv.appendChild(controlsDiv);
+        return itemDiv;
     }
 
     function renderSearchResults(data, errors) {
@@ -313,48 +378,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 resultsDiv.appendChild(createItem(item, onClick, null));
             });
         }
-    }
-    
-    function createItem(item, onLoad, onAppend) {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'result-item';
-        itemDiv.addEventListener('click', onLoad);
-
-        const mainInfoDiv = document.createElement('div');
-        mainInfoDiv.className = 'result-main-info';
-
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'result-title';
-        titleSpan.textContent = item.title;
-        titleSpan.title = item.title; 
-        mainInfoDiv.appendChild(titleSpan);
-
-        itemDiv.appendChild(mainInfoDiv);
-        
-        const controlsDiv = document.createElement('div');
-        controlsDiv.className = 'result-controls';
-        
-        if (item.source) {
-            const sourceSpan = document.createElement('span');
-            sourceSpan.textContent = item.source.replace('.org', '');
-            sourceSpan.className = `result-source source-${item.source.toLowerCase().replace('.org', '')}`;
-            controlsDiv.appendChild(sourceSpan);
-        }
-
-        if (onAppend) {
-            const appendBtn = document.createElement('button');
-            appendBtn.innerHTML = '+';
-            appendBtn.title = 'Append Subtitle';
-            appendBtn.className = 'action-btn append-btn';
-            appendBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                onAppend();
-            });
-            controlsDiv.appendChild(appendBtn);
-        }
-        
-        itemDiv.appendChild(controlsDiv);
-        return itemDiv;
     }
 
     function renderEpisodeList(data, error) {
@@ -425,9 +448,8 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatusMessage('<i>Enter a name and click Search.</i>');
         }
     }
-
+    
     tabButtons.forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
-
     backButton.addEventListener('click', () => {
         if (searchResultsCache) {
             renderSearchResults(searchResultsCache.data, searchResultsCache.errors);
@@ -440,7 +462,6 @@ document.addEventListener('DOMContentLoaded', function() {
             backButton.style.display = 'none';
         }
     });
-
     searchButton.addEventListener('click', async () => {
         const { [LAST_SEARCH_TIME_KEY]: lastSearchTimestamp = 0 } = await chrome.storage.local.get(LAST_SEARCH_TIME_KEY);
         const now = Date.now();
@@ -449,35 +470,28 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatusMessage(`<i>Too many requests. Please wait ${timeLeft} seconds.</i>`, true);
             return;
         }
-
         const query = searchInput.value.trim();
         if (!query) return;
-        
         clearAllSubtitleState(true);
         searchResultsCache = null;
         backButton.style.display = 'none';
-
         const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
         if (selectedSources.length === 0) {
             showStatusMessage('<i>Please select at least one source.</i>', true);
             return;
         }
-        
         await chrome.storage.local.set({ [LAST_SEARCH_TIME_KEY]: now });
-        
-        const language = languageSelect.value; 
+        const language = languageSelect.value;
         showStatusMessage('<i>Searching...</i>');
         saveSearchHistory(query);
         chrome.runtime.sendMessage({ action: 'search', query: query, sources: selectedSources, language: language });
     });
-    
     searchInput.addEventListener('keydown', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault();
             searchButton.click();
         }
     });
-    
     sourceCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', () => {
             const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
@@ -488,7 +502,6 @@ document.addEventListener('DOMContentLoaded', function() {
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
     loadFileBtn.addEventListener('click', () => fileInput.click());
 
-
     transcriptContainer.addEventListener('click', (e) => {
         const entry = e.target.closest('.transcript-entry');
         if (entry && entry.dataset.startTime) {
@@ -496,12 +509,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const offset = parseFloat(offsetInput.value) || 0;
             let seekTime = originalStartTime + offset;
             if (seekTime < 0) seekTime = 0;
-
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs[0] && tabs[0].id) {
-                    chrome.tabs.sendMessage(tabs[0].id, { 
-                        action: 'seekVideo', 
-                        time: seekTime 
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'seekVideo',
+                        time: seekTime
                     });
                 }
             });
@@ -514,28 +526,32 @@ document.addEventListener('DOMContentLoaded', function() {
     positionUpBtn.addEventListener('click', () => adjustValue(positionInput, 1, 0));
     fontsizeMinusBtn.addEventListener('click', () => adjustValue(fontsizeInput, -0.1, 1));
     fontsizePlusBtn.addEventListener('click', () => adjustValue(fontsizeInput, 0.1, 1));
+    panelWidthMinusBtn.addEventListener('click', () => adjustValue(panelWidthInput, -1, 0));
+    panelWidthPlusBtn.addEventListener('click', () => adjustValue(panelWidthInput, 1, 0));
+    panelHeightMinusBtn.addEventListener('click', () => adjustValue(panelHeightInput, -5, 0));
+    panelHeightPlusBtn.addEventListener('click', () => adjustValue(panelHeightInput, 5, 0));
 
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (request.action === 'searchResults') {
             searchResultsCache = { data: request.data, errors: request.errors };
             renderSearchResults(request.data, request.errors);
             backButton.style.display = 'none';
-            chrome.storage.session.set({ [UI_STATE_KEY]: { 
-                view: 'searchResults', 
-                data: request.data, 
-                errors: request.errors, 
-                backButtonCache: null 
+            chrome.storage.session.set({ [UI_STATE_KEY]: {
+                view: 'searchResults',
+                data: request.data,
+                errors: request.errors,
+                backButtonCache: null
             }});
         } else if (request.action === 'episodeListReady') {
             renderEpisodeList(request.data, request.error);
             if (searchResultsCache) {
                 backButton.style.display = 'block';
             }
-            chrome.storage.session.set({ [UI_STATE_KEY]: { 
-                view: 'episodeList', 
-                data: request.data, 
-                error: request.error, 
-                backButtonCache: searchResultsCache 
+            chrome.storage.session.set({ [UI_STATE_KEY]: {
+                view: 'episodeList',
+                data: request.data,
+                error: request.error,
+                backButtonCache: searchResultsCache
             }});
         } else if (request.action === 'showStatus') {
             showStatusMessage(request.message, true);
@@ -543,24 +559,37 @@ document.addEventListener('DOMContentLoaded', function() {
             highlightTranscriptLine(request.index);
         } else if (request.action === 'subtitleReadyForPopup') {
             checkAndLoadSessionSubtitle();
+        } else if (request.action === 'updateSettingInPopup') {
+            if (request.setting === 'position') {
+                if (positionInput) {
+                    positionInput.value = parseFloat(request.value).toFixed(0);
+                }
+            }
         }
     });
 
+    function togglePanelSettings() {
+        if (backgroundStyleSelect.value === 'panel') {
+            panelWidthRow.style.display = 'flex';
+            panelHeightRow.style.display = 'flex';
+        } else {
+            panelWidthRow.style.display = 'none';
+            panelHeightRow.style.display = 'none';
+        }
+    }
+
+    backgroundStyleSelect.addEventListener('change', togglePanelSettings);
+    
     async function initialize() {
         loadSettings();
         loadSearchHistory();
-
         const subResult = await chrome.storage.session.get(SESSION_SUB_KEY);
         if (subResult[SESSION_SUB_KEY] && subResult[SESSION_SUB_KEY].data) {
-            
             transcriptSubtitles = parseSrtForTranscript(subResult[SESSION_SUB_KEY].data);
             updateTranscriptDisplay();
         }
-
-        await checkAndLoadSessionSubtitle(); 
-        
+        await checkAndLoadSessionSubtitle();
         await restoreLastUiState();
-        
         const { [LAST_ACTIVE_TAB_KEY]: lastTab } = await chrome.storage.local.get([LAST_ACTIVE_TAB_KEY]);
         showTab(lastTab || 'search-tab');
     }

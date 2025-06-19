@@ -73,6 +73,7 @@
         </div>
         <div class="setting-group">
           <h3>Subtitle Appearance</h3>
+          <label class="checkbox-label"><input type="checkbox" id="move-on-pause-toggle"> Move panel up on pause</label>
           <div class="setting-row">
             <label for="position-input">Vertical Position</label>
             <div class="input-group">
@@ -90,6 +91,31 @@
               <button id="fontsize-plus">+</button>
               <span>vw</span>
             </div>
+          </div>
+          <div class="setting-row">
+              <label for="background-style-select">Subtitle Background</label>
+              <select id="background-style-select" class="input-group">
+                <option value="default">Outline (Default)</option>
+                <option value="panel">Fixed Panel</option>
+              </select>
+          </div>
+          <div id="panel-width-row" class="setting-row" style="display: none;">
+              <label for="panel-width-input">Panel Width</label>
+              <div class="input-group">
+                <button id="panel-width-minus">-</button>
+                <input id="panel-width-input" type="text" value="90" size="3">
+                <button id="panel-width-plus">+</button>
+                <span>%</span>
+              </div>
+          </div>
+          <div id="panel-height-row" class="setting-row" style="display: none;">
+              <label for="panel-height-input">Panel Height</label>
+              <div class="input-group">
+                <button id="panel-height-minus">-</button>
+                <input id="panel-height-input" type="text" value="80" size="3">
+                <button id="panel-height-plus">+</button>
+                <span>px</span>
+              </div>
           </div>
         </div>
         <button id="apply-btn" class="action-btn wide-btn">Apply to Video</button>
