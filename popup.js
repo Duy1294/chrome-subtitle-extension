@@ -537,18 +537,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // popup.js
-
     async function initialize() {
         loadSettings();
         loadSearchHistory();
-        await checkAndLoadSessionSubtitle();
+
+        const subResult = await chrome.storage.session.get(SESSION_SUB_KEY);
+        if (subResult[SESSION_SUB_KEY] && subResult[SESSION_SUB_KEY].data) {
+            
+            transcriptSubtitles = parseSrtForTranscript(subResult[SESSION_SUB_KEY].data);
+            updateTranscriptDisplay();
+        }
+
+        await checkAndLoadSessionSubtitle(); 
+        
+        await restoreLastUiState();
+        
         const { [LAST_ACTIVE_TAB_KEY]: lastTab } = await chrome.storage.local.get([LAST_ACTIVE_TAB_KEY]);
-        
-        
-        await restoreLastUiState(); 
-        
-        
         showTab(lastTab || 'search-tab');
     }
 
