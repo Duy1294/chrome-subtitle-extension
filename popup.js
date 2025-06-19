@@ -38,6 +38,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const resetSettingsBtn = document.getElementById('reset-settings-btn');
     const filterContainer = document.getElementById('filter-container');
     const filterInput = document.getElementById('filter-input');
+    const deeplApiKeyInput = document.getElementById('deepl-api-key-input');
+
+    const DEEPL_KEY_STORAGE = 'deepl_api_key';
+
+    deeplApiKeyInput.addEventListener('change', () => {
+        const key = deeplApiKeyInput.value.trim();
+        chrome.storage.local.set({ [DEEPL_KEY_STORAGE]: key });
+    });
 
     filterInput.addEventListener('input', () => {
         const filterText = filterInput.value.toLowerCase();
@@ -299,7 +307,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function loadSettings() {
-        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY], (result) => {
+        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
             const currentSettings = { ...defaultSettings, ...savedSettings };
             offsetInput.value = currentSettings.offset.toFixed(1);
@@ -321,6 +329,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             } else {
                 sourceCheckboxes.forEach(cb => cb.checked = true);
+            }
+
+            if (result[DEEPL_KEY_STORAGE]) {
+                deeplApiKeyInput.value = result[DEEPL_KEY_STORAGE];
             }
         });
     }

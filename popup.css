@@ -402,3 +402,12 @@ main {
 .transcript-entry.highlight .timestamp {
   color: white;
 }
+.api-key-input {
+    flex-basis: 55%;
+    background-color: var(--bg-lighter);
+    border: 1px solid var(--border-color);
+    color: white;
+    padding: 6px;
+    border-radius: 4px;
+    font-family: monospace;
+}
