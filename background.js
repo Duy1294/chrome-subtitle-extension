@@ -1,5 +1,3 @@
-// background.js
-
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ windowId: tab.windowId });
 });
@@ -144,31 +142,78 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   } else if (request.action === 'lookupWord') {
     const { word, language } = request;
-    if (language === 'japanese') {
-        const url = `https://jisho.org/api/v1/search/words?keyword=${encodeURIComponent(word)}`;
-        fetch(url)
-            .then(response => response.ok ? response.json() : Promise.reject('Jisho API request failed'))
-            .then(data => sendResponse({ success: true, source: 'jisho', data: data }))
-            .catch(error => sendResponse({ success: false, error: error.message }));
-    } else {
-        const sourceLang = { 'german': 'de', 'english': 'en', 'french': 'fr', 'spanish': 'es' }[language] || 'auto';
-        const targetLang = 'vi';
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(word)}`;
-        fetch(url)
-            .then(response => response.ok ? response.json() : Promise.reject('Google Translate API request failed'))
-            .then(json => {
-                if (json && json[0] && json[0][0] && json[0][0][0]) {
+    const supportedDeepLLanguages = ['german', 'english', 'french', 'spanish'];
+
+    chrome.storage.local.get(['deepl_api_key'], async (result) => {
+        const deeplKey = result.deepl_api_key;
+
+        if (deeplKey && supportedDeepLLanguages.includes(language)) {
+            const isFreeTier = deeplKey.endsWith(':fx');
+            const apiUrl = isFreeTier 
+                ? 'https://api-free.deepl.com/v2/translate' 
+                : 'https://api.deepl.com/v2/translate';
+
+            const body = { text: [word], target_lang: 'VI' };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `DeepL-Auth-Key ${deeplKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        throw new Error('Forbidden. Please check if your API Key is correct and active.');
+                    }
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data.translations && data.translations.length > 0) {
                     sendResponse({ 
                         success: true, 
-                        source: 'google_translate', 
-                        data: { word: json[0][0][1], translation: json[0][0][0] }
+                        source: 'deepl', 
+                        data: { word: word, translation: data.translations[0].text }
                     });
                 } else {
-                    Promise.reject('No translation found.');
+                    throw new Error('DeepL returned no translation.');
                 }
-            })
-            .catch(error => sendResponse({ success: false, error: error.message }));
-    }
+            } catch (error) {
+                sendResponse({ success: false, error: error.message });
+            }
+        } else {
+            if (language === 'japanese') {
+                const url = `https://jisho.org/api/v1/search/words?keyword=${encodeURIComponent(word)}`;
+                fetch(url)
+                    .then(response => response.ok ? response.json() : Promise.reject('Jisho API request failed'))
+                    .then(data => sendResponse({ success: true, source: 'jisho', data: data }))
+                    .catch(error => sendResponse({ success: false, error: error.message }));
+            } else {
+                const sourceLang = { 'german': 'de', 'english': 'en', 'french': 'fr', 'spanish': 'es' }[language] || 'auto';
+                const targetLang = 'vi';
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(word)}`;
+                fetch(url)
+                    .then(response => response.ok ? response.json() : Promise.reject('Google Translate API request failed'))
+                    .then(json => {
+                        if (json && json[0] && json[0][0] && json[0][0][0]) {
+                            sendResponse({ 
+                                success: true, 
+                                source: 'google_translate', 
+                                data: { word: json[0][0][1], translation: json[0][0][0] }
+                            });
+                        } else {
+                           sendResponse({ success: false, error: 'No translation found.' });
+                        }
+                    })
+                    .catch(error => sendResponse({ success: false, error: error.message }));
+            }
+        }
+    });
     return true;
   
   } else if (request.action === 'clearSubtitles') {

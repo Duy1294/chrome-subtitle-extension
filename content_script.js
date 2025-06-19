@@ -118,7 +118,7 @@ function renderPopupContent(word, response, container) {
             html += `</div>`;
         });
     }
-    else if (response.source === 'google_translate') {
+    else if (response.source === 'google_translate' || response.source === 'deepl') {
         html += `<div class="dict-entry">`;
         html += `<div class="dict-entry-japanese">`;
         html += `<span class="dict-entry-word">${response.data.word}</span>`;
@@ -218,6 +218,8 @@ function showDictionaryPopup(word, clickedElement) {
                     title.textContent = `Jisho.org: ${word}`;
                 } else if (response.source === 'google_translate') {
                     title.textContent = `Google Translate: ${word}`;
+                } else if (response.source === 'deepl') {
+                    title.textContent = `DeepL: ${word}`;
                 }
                 renderPopupContent(word, response, content);
                 ankiBtn.dataset.lookupResponse = JSON.stringify(response);
