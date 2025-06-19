@@ -29,6 +29,7 @@
         "<all_urls>"
       ],
       "js": [
+        "subsrt.js",
         "kuromoji.js",
         "content_script.js"
       ],
@@ -41,9 +42,10 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "subsrt.js",
         "dict/*",
         "popup.css",
-        "jszip.min.js" 
+        "jszip.min.js"
       ],
       "matches": [
         "<all_urls>"

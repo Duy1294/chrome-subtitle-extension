@@ -1,4 +1,5 @@
 // content_script.js
+
 console.log("Subtitle Inserter [v21-AssSupport] loaded.");
 
 let videoElement = null;
@@ -82,7 +83,6 @@ function renderPopupContent(word, response, container) {
     }
 
     let html = '';
-    // Hiển thị cho Jisho.org
     if (response.source === 'jisho') {
         if (response.data.data.length === 0) {
             container.innerHTML = `<div class="dict-error">No results found for "${word}" on Jisho.org.</div>`;
@@ -116,7 +116,6 @@ function renderPopupContent(word, response, container) {
             html += `</div>`;
         });
     } 
-    // Hiển thị cho Google Translate (các ngôn ngữ khác)
     else if (response.source === 'google_translate') {
         html += `<div class="dict-entry">`;
         html += `<div class="dict-entry-japanese">`;
@@ -204,13 +203,10 @@ function showDictionaryPopup(word, clickedElement) {
     closeBtn.addEventListener('click', closePopup);
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closePopup(); });
 
-    // Xử lý sự kiện khi nhấn nút Anki
     ankiBtn.addEventListener('click', () => {
         ankiBtn.textContent = 'Adding...';
         ankiBtn.disabled = true;
-
         const language = lastSettings.language || 'japanese'; 
-        
         addNoteToAnki(word, contextSentence, language, (success, error) => {
             if (success) {
                 ankiBtn.textContent = '✓ Added';
@@ -222,7 +218,6 @@ function showDictionaryPopup(word, clickedElement) {
         });
     });
 
-    // Gửi yêu cầu tra từ với thông tin ngôn ngữ
     const language = lastSettings.language || 'japanese';
     chrome.runtime.sendMessage({ action: 'lookupWord', word: word, language: language }, (response) => {
         if (chrome.runtime.lastError) {
@@ -232,7 +227,6 @@ function showDictionaryPopup(word, clickedElement) {
         }
         if (response) {
             if (response.success) {
-                // Cập nhật title của popup dựa trên nguồn
                 if(response.source === 'jisho') {
                     title.textContent = `Jisho.org: ${word}`;
                 } else if (response.source === 'google_translate') {
@@ -240,7 +234,7 @@ function showDictionaryPopup(word, clickedElement) {
                 }
                 
                 renderPopupContent(word, response, content);
-                ankiBtn.dataset.lookupResponse = JSON.stringify(response); // Lưu toàn bộ response
+                ankiBtn.dataset.lookupResponse = JSON.stringify(response);
             } else {
                 content.innerHTML = `<div class="dict-error">Error: ${response.error}</div>`;
                 ankiBtn.disabled = true;
@@ -251,7 +245,6 @@ function showDictionaryPopup(word, clickedElement) {
         }
     });
 }
-
 
 function handleSubtitleInteraction(event) {
     event.stopPropagation();
@@ -276,7 +269,6 @@ function handleSubtitleInteraction(event) {
         }
     }
 }
-// --- END DICTIONARY LOGIC ---
 
 function cleanup(preserveState = false) {
     if (videoElement) videoElement.removeEventListener('timeupdate', updateSubtitle);
@@ -313,10 +305,10 @@ async function initializeSubtitleInjector(video) {
     subtitleContainer.addEventListener('mouseup', handleSubtitleInteraction);
 
     if (lastSubData.data) {
-        console.log("Re-applying subtitles after DOM change (e.g., fullscreen).");
         const { [SETTINGS_KEY]: settings } = await chrome.storage.local.get([SETTINGS_KEY]);
         const currentSettings = { ...defaultSettings, ...settings };
-        await parseAndDisplaySubtitles(lastSubData.data, lastSubData.format, currentSettings);
+        parsedSubtitles = await parseAndDisplaySubtitles(lastSubData.data, lastSubData.format, currentSettings);
+        updateSubtitle();
     }
 }
 
@@ -327,7 +319,6 @@ function updateSubtitle() {
     
     if (currentSubtitleIndex !== -1) {
         const currentSubtitle = parsedSubtitles[currentSubtitleIndex];
-        // Wrap each line in a div to treat them as separate context blocks
         const lines = currentSubtitle.text.split('<br>').map(line => `<div>${line}</div>`).join('');
         subtitleContainer.innerHTML = lines;
     } else {
@@ -340,7 +331,6 @@ function updateSubtitle() {
         lastAnnouncedIndex = currentSubtitleIndex;
     }
 }
-
 
 function timeToSeconds(timeStr) {
     const timeRegex = /(?:(\d+):)?(\d+):(\d+)[,.](\d+)/;
@@ -359,11 +349,16 @@ async function parseSrt(srtText, options = {}) {
     const subtitles = [];
     if (!srtText) return subtitles;
     
-    const entries = srtText.trim().replace(/\r/g, '').split(/\n\s*\n/);
+    const cleanedText = srtText
+        .replace(/&[a-z]+;/gi, '')
+        .replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '');
+
+    const entries = cleanedText.trim().replace(/\r/g, '').split(/\n\s*\n/);
+    
     for (const entry of entries) {
         const lines = entry.split('\n');
         if (lines.length >= 2) {
-            const timeMatch = lines[1].match(/(.+?)\s*-->\s*(.+)/);
+            const timeMatch = lines[1] ? lines[1].match(/(.+?)\s*-->\s*(.+)/) : null;
             if (timeMatch) {
                 const startTime = Math.max(0, timeToSeconds(timeMatch[1].trim()) + offset);
                 const endTime = Math.max(0, timeToSeconds(timeMatch[2].trim()) + offset);
@@ -373,7 +368,6 @@ async function parseSrt(srtText, options = {}) {
                     const originalLines = textContent.split('<br>');
                     let processedLines;
 
-                    // Chỉ áp dụng furigana và kuromoji cho tiếng Nhật
                     if (language === 'japanese') {
                         if (useFurigana) {
                             processedLines = await Promise.all(originalLines.map(line => addFuriganaAndWrap(line)));
@@ -383,7 +377,6 @@ async function parseSrt(srtText, options = {}) {
                             processedLines = originalLines;
                         }
                     } else {
-                        // Đối với các ngôn ngữ khác, chỉ bọc từ để có thể click
                         if(useDictionary) {
                             processedLines = originalLines.map(line => 
                                 line.split(/(\s+)/).map(word => `<span class="vocab-word">${word}</span>`).join('')
@@ -408,10 +401,8 @@ async function parseAndDisplaySubtitles(data, format, settings) {
         useDictionary: settings.enableDictionary || false,
         language: settings.language || 'japanese'
     };
-
     return await parseSrt(data, parseOptions);
 }
-
 
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     if (request.action === 'displaySubtitles') {
@@ -427,17 +418,14 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         dictionaryIsEnabled = lastSettings.enableDictionary;
         
         if (request.append && request.data) {
-            lastSubData.data += '\n\n' + request.data;
-            lastSubData.format = request.format || 'srt';
-            const newSubs = await parseAndDisplaySubtitles(request.data, lastSubData.format, lastSettings);
+            const newSubs = await parseAndDisplaySubtitles(request.data, 'srt', lastSettings);
             parsedSubtitles = parsedSubtitles.concat(newSubs);
+            lastSubData.data += '\n\n' + request.data;
         } else if (request.data) {
-            // New subtitle data loaded
-            lastSubData = { data: request.data, format: request.format || 'srt' };
+            lastSubData = { data: request.data, format: 'srt' };
             parsedSubtitles = await parseAndDisplaySubtitles(lastSubData.data, lastSubData.format, lastSettings);
         } else if (lastSubData.data) {
-            // No new data, but settings were applied. Re-parse existing data.
-            parsedSubtitles = await parseAndDisplaySubtitles(lastSubData.data, lastSubData.format, lastSettings);
+            parsedSubtitles = await parseAndDisplaySubtitles(lastSubData.data, 'srt', lastSettings);
         }
     
         if (lastSettings && subtitleContainer) {
@@ -476,8 +464,6 @@ setTimeout(() => {
 observer = new MutationObserver(handleDOMChanges);
 observer.observe(document.body, { childList: true, subtree: true });
 
-
-// SỬA ĐỔI HOÀN TOÀN HÀM NÀY ĐỂ HỖ TRỢ ANKI ĐA NGÔN NGỮ
 async function addNoteToAnki(word, sentence, language, callback) {
     const ankiBtn = document.getElementById('dictionary-popup-anki-btn');
     const lookupResponse = JSON.parse(ankiBtn.dataset.lookupResponse || '{}');
@@ -487,14 +473,12 @@ async function addNoteToAnki(word, sentence, language, callback) {
         return;
     }
     
-    // Tạo tên deck động dựa trên ngôn ngữ
     const langUpper = language.charAt(0).toUpperCase() + language.slice(1);
     const desiredDeckName = `Created by MSST - ${langUpper}`;
-    const desiredModelName = "Basic"; // Giữ Basic cho đơn giản, có thể tùy biến sau
+    const desiredModelName = "Basic";
 
     let fields = {};
 
-    // Cấu trúc thẻ tùy theo ngôn ngữ và nguồn dữ liệu
     if (language === 'japanese' && lookupResponse.source === 'jisho') {
         const firstEntry = lookupResponse.data.data[0];
         const japanese = firstEntry.japanese[0];
@@ -509,7 +493,7 @@ async function addNoteToAnki(word, sentence, language, callback) {
                         <b>Sentence:</b> ${sentence}
                      </div>`
         };
-    } else { // Cho các ngôn ngữ khác (ví dụ: dùng Google Translate)
+    } else {
         const translation = lookupResponse.data.translation;
         fields = {
             "Front": word,
@@ -530,7 +514,6 @@ async function addNoteToAnki(word, sentence, language, callback) {
             })
         });
 
-        // Cấu trúc của một thẻ Anki (note)
         const note = {
             deckName: desiredDeckName,
             modelName: desiredModelName,
@@ -556,7 +539,6 @@ async function addNoteToAnki(word, sentence, language, callback) {
         });
         const addNoteJson = await addNoteResponse.json();
         
-        // Xử lý lỗi, đặc biệt là lỗi trùng thẻ
         if (addNoteJson.error) {
             if (addNoteJson.error.includes("duplicate")) {
                  callback(false, "Note already exists (duplicate).");

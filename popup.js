@@ -1,12 +1,3 @@
-function cleanSubtitleText(text) {
-  if (!text) return '';
-  return text
-    .replace(/^\uFEFF/, '')           
-    .replace(/[\u200B-\u200F]/g, '')    
-    .replace(/&lrm;/gi, '')             
-    .replace(/&rlm;/gi, '');           
-}
-
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
@@ -58,39 +49,32 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentlyHighlighted = null;
     let searchResultsCache = null;
 
-    function formatSrtTime(assTime) {
-        const parts = assTime.split(':');
-        const h = parts[0].padStart(2, '0');
-        const m = parts[1].padStart(2, '0');
-        const sec_ms = parts[2].split('.');
-        const s = sec_ms[0].padStart(2, '0');
-        const ms = (sec_ms[1] || '00').padEnd(3, '0');
-        return `${h}:${m}:${s},${ms}`;
-    }
-
-    function convertAssToSrt(assText) {
-        const lines = assText.split(/\r?\n/);
-        const srtEntries = [];
-        let srtIndex = 1;
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine.startsWith('Dialogue:')) {
-                const parts = trimmedLine.split(',');
-                if (parts.length < 10) continue;
-                const startTime = parts[1].trim();
-                const endTime = parts[2].trim();
-                let textContent = parts.slice(9).join(',').replace(/{[^}]*}/g, '').replace(/\\N/g, '\n');
-                textContent = cleanSubtitleText(textContent).trim(); 
-                if (textContent) {
-                    const srtStartTime = formatSrtTime(startTime);
-                    const srtEndTime = formatSrtTime(endTime);
-                    srtEntries.push(`${srtIndex}\n${srtStartTime} --> ${srtEndTime}\n${textContent}`);
-                    srtIndex++;
-                }
+    fileInput.addEventListener('change', (event) => {
+    clearAllSubtitleState(true);
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const rawText = e.target.result;
+        try {
+            console.log("--- BẮT ĐẦU DEBUG FILE SSA ---"); // Dòng log 1
+            console.log("Nội dung file gốc:", rawText);    // Dòng log 2
+            
+                const captions = subsrt.parse(rawText);
+                const srtText = subsrt.build(captions, { format: 'srt' });
+                loadSubData(srtText, false);
+                applyStatus.textContent = `Loaded from file: ${file.name}`;
+                applyStatus.className = 'status-message success';
+                applyStatus.style.display = 'block';
+                setTimeout(() => { applyStatus.style.display = 'none'; }, 4000);
+            } catch(error) {
+                showStatusMessage(`<i>Error: Could not process file. It may be invalid or unsupported.</i>`, true);
+                console.error("Error processing local file:", error);
             }
-        }
-        return srtEntries.join('\n\n');
-    }
+        };
+        reader.readAsText(file);
+        fileInput.value = '';
+    });
     
     function clearAllSubtitleState(isNewSearch = false) {
         chrome.storage.session.remove([SESSION_SUB_KEY]);
@@ -105,8 +89,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function loadSubData(srtText, isAppending = false) {
-        await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
-
         if (isAppending) {
             const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
             const existingSub = result[SESSION_SUB_KEY] || { data: '' };
@@ -114,7 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: newSubText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(newSubText);
             chrome.runtime.sendMessage({ action: 'applySettingsToTab', settings: getSettingsFromPanel(), data: srtText, format: 'srt', append: true });
-            showStatusMessage(`<i style="color: var(--success-color);">✓ Subtitle appended successfully.</i>`);
+            showStatusMessage(`<i style="color: var(--success-color);">Subtitle appended successfully.</i>`);
         } else {
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(srtText);
@@ -161,7 +143,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function parseSrtForTranscript(srtText) {
         const subtitles = [];
         if (!srtText) return subtitles;
-        const entries = srtText.trim().replace(/\r/g, '').split(/\n\s*\n/);
+        const cleanedText = srtText.replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '');
+        const entries = cleanedText.trim().replace(/\r/g, '').split(/\n\s*\n/);
         for (const entry of entries) {
             const lines = entry.split('\n');
             if (lines.length >= 2) {
@@ -229,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function applySettingsFromPanel(newDataLoaded = false) {
         const settings = getSettingsFromPanel();
-        applyStatus.textContent = newDataLoaded ? '✓ Subtitle loaded and settings applied.' : '✓ Settings updated.';
+        applyStatus.textContent = newDataLoaded ? 'Subtitle loaded and settings applied.' : 'Settings updated.';
         applyStatus.className = 'status-message success';
         applyStatus.style.display = 'block';
         setTimeout(() => { applyStatus.style.display = 'none'; }, 3000);
@@ -504,27 +487,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
     loadFileBtn.addEventListener('click', () => fileInput.click());
-    
-    fileInput.addEventListener('change', (event) => {
-        clearAllSubtitleState(true);
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            let subText = e.target.result;
-            subText = cleanSubtitleText(subText);
-            if (file.name.toLowerCase().endsWith('.ass')) {
-                subText = convertAssToSrt(subText);
-            }
-            loadSubData(subText, false);
-            applyStatus.textContent = `✓ Loaded from file: ${file.name}`;
-            applyStatus.className = 'status-message success';
-            applyStatus.style.display = 'block';
-            setTimeout(() => { applyStatus.style.display = 'none'; }, 4000);
-        };
-        reader.readAsText(file);
-        fileInput.value = '';
-    });
 
     transcriptContainer.addEventListener('click', (e) => {
         const entry = e.target.closest('.transcript-entry');
