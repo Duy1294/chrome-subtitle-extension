@@ -288,7 +288,7 @@ function onDragEnd(e) {
 
 function handleVideoPause() {
     if (lastSettings.moveOnPause && lastSettings.backgroundStyle === 'panel' && subtitleContainer) {
-        userDefinedBottom = subtitleContainer.style.bottom;
+        
         subtitleContainer.style.bottom = '80%';
     }
 }

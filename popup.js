@@ -35,6 +35,29 @@ document.addEventListener('DOMContentLoaded', function() {
     const panelHeightInput = document.getElementById('panel-height-input');
     const panelHeightMinusBtn = document.getElementById('panel-height-minus');
     const panelHeightPlusBtn = document.getElementById('panel-height-plus');
+    const resetSettingsBtn = document.getElementById('reset-settings-btn');
+
+    if (resetSettingsBtn) {
+        resetSettingsBtn.addEventListener('click', function() {
+            const isConfirmed = window.confirm(
+                "Are you sure you want to reset everything?\n\n" +
+                "This will delete all your saved settings, search history, and clear any loaded subtitles. " +
+                "The extension will be restored to its default state."
+            );
+
+            if (isConfirmed) {
+                chrome.storage.local.clear(() => {
+                    console.log('Local storage cleared.');
+                });
+                chrome.storage.session.clear(() => {
+                    console.log('Session storage cleared.');
+                });
+                chrome.runtime.sendMessage({ action: 'clearSubtitles' });
+                alert('All settings and data have been reset. The panel will now reload.');
+                window.location.reload();
+            }
+        });
+    }
 
     const SETTINGS_KEY = 'subtitleUserSettings';
     const SEARCH_HISTORY_KEY = 'subtitleSearchHistory';

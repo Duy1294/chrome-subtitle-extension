@@ -260,7 +260,6 @@ main {
   background-color: var(--accent-color-hover);
 }
 
-
 .status-message, #apply-status {
   text-align: center;
   padding: 20px 0;
@@ -387,4 +386,12 @@ main {
 
 .transcript-entry.highlight .timestamp {
   color: white;
+}
+
+.action-btn.danger-btn {
+  background-color: var(--danger-color);
+  border: none;
+}
+.action-btn.danger-btn:hover {
+  background-color: #c95d66;
 }
