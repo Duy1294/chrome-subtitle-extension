@@ -161,12 +161,44 @@ window.addEventListener('load', function() {
                         throw new Error('Empty or invalid subtitle file.');
                     }
                     const captions = subsrt.parse(cleanedText);
-                    const srtContent = subsrt.build(captions, { format: 'srt' });
+                    
+                    const cleanedCaptions = captions.map(caption => {
+                        caption.text = caption.text.replace(/{[^}]+}/g, '');
+                        caption.text = caption.text.replace(/\\N/g, '\n');
+                        return caption;
+                    });
+
+                    const srtContent = subsrt.build(cleanedCaptions, { format: 'srt' });
                     chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: srtContent });
                 } catch (error) {
                     console.error("Subsrt parsing/building error:", error);
                     chrome.runtime.sendMessage({ action: 'fetchError', error: error.message || 'Could not parse subtitle file.' });
                 }
+            };
+            
+            const decodeWithFallback = async (buffer) => {
+                const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
+                let decodedText = utf8Decoder.decode(buffer);
+
+                if (decodedText.includes('\uFFFD')) {
+                    console.warn('UTF-8 decoding resulted in replacement characters. Falling back to windows-1252.');
+                    const fallbackDecoder = new TextDecoder('windows-1252');
+                    decodedText = fallbackDecoder.decode(buffer);
+                }
+                return decodedText;
+            };
+
+            const fetchAndDecode = (url) => {
+                return fetch(url)
+                    .then(response => {
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        const contentType = response.headers.get('content-type');
+                        if (contentType && contentType.includes('text/html')) {
+                            throw new Error('File is an HTML page, not a subtitle file.');
+                        }
+                        return response.arrayBuffer();
+                    })
+                    .then(buffer => decodeWithFallback(buffer));
             };
 
             if (format === 'zip') {
@@ -192,7 +224,7 @@ window.addEventListener('load', function() {
                         }
 
                         if (subtitleEntry) {
-                            return subtitleEntry.async('string');
+                            return subtitleEntry.async('arraybuffer').then(buffer => decodeWithFallback(buffer));
                         } else {
                             throw new Error('No subtitle file (.srt, .ass, .vtt) found in zip.');
                         }
@@ -202,15 +234,7 @@ window.addEventListener('load', function() {
                         chrome.runtime.sendMessage({ action: 'fetchError', error: error.message });
                     });
             } else {
-                fetch(url)
-                    .then(response => {
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        const contentType = response.headers.get('content-type');
-                        if (contentType && contentType.includes('text/html')) {
-                            throw new Error('File is an HTML page, not a subtitle file.');
-                        }
-                        return response.text();
-                    })
+                fetchAndDecode(url)
                     .then(processSubtitleContent)
                     .catch(error => {
                         chrome.runtime.sendMessage({ action: 'fetchError', error: error.message });

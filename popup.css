@@ -161,7 +161,7 @@ main {
 
 #results-container {
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   flex-grow: 1;
 }
 
@@ -183,13 +183,10 @@ main {
 .result-main-info {
   flex-grow: 1;
   margin-right: 8px;
-  overflow: hidden;
 }
 
 .result-title {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-size: 13px;
 }
 
@@ -258,6 +255,14 @@ main {
 }
 .action-btn.wide-btn:hover {
   background-color: var(--accent-color-hover);
+}
+
+.action-btn.danger-btn {
+  background-color: var(--danger-color);
+  border: none;
+}
+.action-btn.danger-btn:hover {
+  background-color: #c95d66;
 }
 
 .status-message, #apply-status {
@@ -386,12 +391,4 @@ main {
 
 .transcript-entry.highlight .timestamp {
   color: white;
-}
-
-.action-btn.danger-btn {
-  background-color: var(--danger-color);
-  border: none;
-}
-.action-btn.danger-btn:hover {
-  background-color: #c95d66;
 }
