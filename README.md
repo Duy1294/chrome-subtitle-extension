@@ -9,10 +9,12 @@ Bước 1: Tải mã nguồn về máy
 Trên trang GitHub này, nhấp vào nút màu xanh lá cây < > Code.
 Chọn Download ZIP.
 Lưu file ZIP này về máy tính của bạn.
+
 Bước 2: Giải nén file ZIP
 
 Giải nén file chrome-subtitle-extension-main.zip bạn vừa tải về ra một thư mục.
 Quan trọng: Hãy đặt thư mục này ở một vị trí cố định mà bạn sẽ không xóa đi (ví dụ: trong Documents hoặc Desktop). Chrome sẽ cần truy cập vào thư mục này để tiện ích hoạt động. Nếu bạn xóa thư mục này, tiện ích sẽ bị lỗi.
+
 Bước 3: Cài đặt tiện ích vào Chrome
 
 Mở trình duyệt Google Chrome.
