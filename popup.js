@@ -537,16 +537,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // popup.js
+
     async function initialize() {
         loadSettings();
         loadSearchHistory();
         await checkAndLoadSessionSubtitle();
         const { [LAST_ACTIVE_TAB_KEY]: lastTab } = await chrome.storage.local.get([LAST_ACTIVE_TAB_KEY]);
-        showTab(lastTab || 'search-tab');
         
-        if ((lastTab || 'search-tab') === 'search-tab') {
-            await restoreLastUiState();
-        }
+        
+        await restoreLastUiState(); 
+        
+        
+        showTab(lastTab || 'search-tab');
     }
 
     initialize();
