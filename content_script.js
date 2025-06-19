@@ -17,7 +17,11 @@ const defaultSettings = {
     fontSize: 2.5,
     enableFurigana: false,
     enableDictionary: false,
-    language: 'japanese'
+    language: 'japanese',
+    moveOnPause: false,
+    backgroundStyle: 'default',
+    panelWidth: 90,
+    panelHeight: 80
 };
 let observer = null;
 let dictionaryIsEnabled = false;
@@ -229,23 +233,27 @@ function showDictionaryPopup(word, clickedElement) {
 }
 
 function handleSubtitleInteraction(event) {
-    if (isDragging) return;
-    event.stopPropagation();
-    if (!dictionaryIsEnabled) return;
-    const selection = window.getSelection();
-    if (event.type === 'mouseup' && !selection.isCollapsed) {
-        const selectedText = getBaseText(selection.getRangeAt(0).cloneContents()).trim();
-        if (selectedText.length > 0 && subtitleContainer.contains(selection.anchorNode)) {
-            showDictionaryPopup(selectedText, selection.anchorNode.parentElement);
+    if (event.type === 'mouseup') {
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) {
+            event.stopPropagation();
+            const selectedText = getBaseText(selection.getRangeAt(0).cloneContents()).trim();
+            if (selectedText.length > 0 && subtitleContainer.contains(selection.anchorNode)) {
+                showDictionaryPopup(selectedText, selection.anchorNode.parentElement);
+            }
+            return;
         }
-        return;
     }
-    if (event.type === 'click' && selection.isCollapsed) {
-        const wordElement = event.target.closest('.vocab-word');
-        if (wordElement) {
-            const word = getBaseText(wordElement).trim();
-            if (word) {
-                showDictionaryPopup(word, wordElement);
+    
+    if (event.type === 'click') {
+        const selection = window.getSelection();
+        if (selection && selection.isCollapsed) {
+            const wordElement = event.target.closest('.vocab-word');
+            if (wordElement) {
+                const word = getBaseText(wordElement).trim();
+                if (word) {
+                    showDictionaryPopup(word, wordElement);
+                }
             }
         }
     }
@@ -286,24 +294,54 @@ function onDragEnd(e) {
     }
 }
 
-function handleVideoPause() {
-    if (lastSettings.moveOnPause && lastSettings.backgroundStyle === 'panel' && subtitleContainer) {
-        
-        subtitleContainer.style.bottom = '80%';
-    }
-}
+function updateSubtitleAppearance() {
+    if (!subtitleContainer || !lastSettings) return;
 
-function handleVideoPlay() {
-    if (lastSettings.moveOnPause && lastSettings.backgroundStyle === 'panel' && subtitleContainer) {
+    userDefinedBottom = `${lastSettings.position}%`;
+    const shouldBeElevated = videoElement && videoElement.paused && lastSettings.moveOnPause && lastSettings.backgroundStyle === 'panel';
+
+    if (shouldBeElevated) {
+        const videoParent = subtitleContainer.parentElement;
+        if (videoParent) {
+            const parentHeight = videoParent.clientHeight;
+            const panelHeight = subtitleContainer.offsetHeight;
+            const topMargin = 10;
+            const newBottomInPixels = parentHeight - panelHeight - topMargin;
+            const newBottomInPercent = (newBottomInPixels / parentHeight) * 100;
+            subtitleContainer.style.bottom = `${newBottomInPercent}%`;
+        }
+    } else {
         subtitleContainer.style.bottom = userDefinedBottom;
+    }
+
+    subtitleContainer.style.fontSize = `${lastSettings.fontSize}vw`;
+    if (lastSettings.backgroundStyle === 'panel') {
+        subtitleContainer.style.backgroundColor = '#282c34';
+        subtitleContainer.style.textShadow = 'none';
+        subtitleContainer.style.borderRadius = '4px';
+        subtitleContainer.style.width = `${lastSettings.panelWidth}%`;
+        subtitleContainer.style.height = `${lastSettings.panelHeight}px`;
+        subtitleContainer.style.display = 'flex';
+        subtitleContainer.style.flexDirection = 'column';
+        subtitleContainer.style.justifyContent = 'center';
+        subtitleContainer.style.padding = '0 0.5em';
+    } else {
+        subtitleContainer.style.backgroundColor = 'transparent';
+        subtitleContainer.style.textShadow = '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000';
+        subtitleContainer.style.borderRadius = '0';
+        subtitleContainer.style.width = '90%';
+        subtitleContainer.style.height = 'auto';
+        subtitleContainer.style.display = 'block';
+        subtitleContainer.style.justifyContent = 'initial';
+        subtitleContainer.style.padding = '0';
     }
 }
 
 function cleanup(preserveState = false) {
     if (videoElement) {
         videoElement.removeEventListener('timeupdate', updateSubtitle);
-        videoElement.removeEventListener('pause', handleVideoPause);
-        videoElement.removeEventListener('play', handleVideoPlay);
+        videoElement.removeEventListener('pause', updateSubtitleAppearance);
+        videoElement.removeEventListener('play', updateSubtitleAppearance);
     }
     if (subtitleContainer && subtitleContainer.parentElement) {
         subtitleContainer.remove();
@@ -331,12 +369,19 @@ async function initializeSubtitleInjector(video) {
     const videoParent = video.parentElement;
     if (getComputedStyle(videoParent).position === 'static') videoParent.style.position = 'relative';
     videoParent.appendChild(subtitleContainer);
+    
     video.addEventListener('timeupdate', updateSubtitle);
-    video.addEventListener('pause', handleVideoPause);
-    video.addEventListener('play', handleVideoPlay);
-    subtitleContainer.addEventListener('click', handleSubtitleInteraction);
-    subtitleContainer.addEventListener('mouseup', handleSubtitleInteraction);
+    video.addEventListener('pause', updateSubtitleAppearance);
+    video.addEventListener('play', updateSubtitleAppearance);
+
+    subtitleContainer.addEventListener('click', (e) => {
+        if (!isDragging) handleSubtitleInteraction(e);
+    });
+    subtitleContainer.addEventListener('mouseup', (e) => {
+        if (!isDragging) handleSubtitleInteraction(e);
+    });
     subtitleContainer.addEventListener('mousedown', onDragStart);
+
     if (lastSubData.data) {
         const { [SETTINGS_KEY]: settings } = await chrome.storage.local.get([SETTINGS_KEY]);
         const currentSettings = { ...defaultSettings, ...settings };
@@ -452,38 +497,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         } else if (lastSubData.data) {
             parsedSubtitles = await parseAndDisplaySubtitles(lastSubData.data, 'srt', lastSettings);
         }
-        if (lastSettings && subtitleContainer) {
-            userDefinedBottom = `${lastSettings.position}%`;
-
-            if (videoElement.paused && lastSettings.moveOnPause && lastSettings.backgroundStyle === 'panel') {
-                handleVideoPause(); 
-            } else {
-                subtitleContainer.style.bottom = userDefinedBottom;
-            }
-
-            subtitleContainer.style.fontSize = `${lastSettings.fontSize}vw`;
-            if (lastSettings.backgroundStyle === 'panel') {
-                subtitleContainer.style.backgroundColor = '#282c34';
-                subtitleContainer.style.textShadow = 'none';
-                subtitleContainer.style.borderRadius = 'px';
-                subtitleContainer.style.width = `${lastSettings.panelWidth}%`;
-                subtitleContainer.style.height = `${lastSettings.panelHeight}px`;
-                subtitleContainer.style.display = 'flex';
-                subtitleContainer.style.flexDirection = 'column';
-                subtitleContainer.style.justifyContent = 'center';
-                subtitleContainer.style.padding = '0 0.5em';
-            } else {
-                subtitleContainer.style.backgroundColor = 'transparent';
-                subtitleContainer.style.textShadow = '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000';
-                subtitleContainer.style.borderRadius = '0';
-                subtitleContainer.style.width = '90%';
-                subtitleContainer.style.height = 'auto';
-                subtitleContainer.style.display = 'block';
-                subtitleContainer.style.justifyContent = 'initial';
-                subtitleContainer.style.padding = '0';
-            }
-        }
+        
+        updateSubtitleAppearance();
         updateSubtitle();
+
     } else if (request.action === 'seekVideo') {
         if (videoElement) videoElement.currentTime = request.time;
     } else if (request.action === 'clearSubtitles') {
