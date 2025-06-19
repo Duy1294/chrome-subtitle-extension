@@ -488,6 +488,7 @@ document.addEventListener('DOMContentLoaded', function() {
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
     loadFileBtn.addEventListener('click', () => fileInput.click());
 
+
     transcriptContainer.addEventListener('click', (e) => {
         const entry = e.target.closest('.transcript-entry');
         if (entry && entry.dataset.startTime) {
@@ -495,7 +496,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const offset = parseFloat(offsetInput.value) || 0;
             let seekTime = originalStartTime + offset;
             if (seekTime < 0) seekTime = 0;
-            chrome.runtime.sendMessage({ action: 'seekVideo', time: seekTime });
+
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0] && tabs[0].id) {
+                    chrome.tabs.sendMessage(tabs[0].id, { 
+                        action: 'seekVideo', 
+                        time: seekTime 
+                    });
+                }
+            });
         }
     });
 
