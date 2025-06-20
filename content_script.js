@@ -168,8 +168,18 @@ function showDictionaryPopup(word, clickedElement) {
         marginLeft: '10px', padding: '2px 8px', fontSize: '12px',
         cursor: 'pointer', border: '1px solid #ccc', borderRadius: '3px'
     });
+
+    const vocabBtn = document.createElement('button');
+    vocabBtn.id = 'dictionary-popup-vocab-btn';
+    vocabBtn.textContent = 'Add to Vocab List';
+    Object.assign(vocabBtn.style, {
+        marginLeft: '10px', padding: '2px 8px', fontSize: '12px',
+        cursor: 'pointer', border: '1px solid #ccc', borderRadius: '3px'
+    });
+
     header.appendChild(title);
     header.appendChild(ankiBtn);
+    header.appendChild(vocabBtn);
     header.appendChild(closeBtn);
     container.appendChild(header);
     container.appendChild(content);
@@ -221,11 +231,29 @@ function showDictionaryPopup(word, clickedElement) {
         });
     });
 
+    vocabBtn.addEventListener('click', () => {
+        vocabBtn.textContent = 'Adding...';
+        vocabBtn.disabled = true;
+
+        const lookupResponse = JSON.parse(vocabBtn.dataset.lookupResponse || '{}');
+        if (!lookupResponse.success) return;
+        
+        addWordToVocabList(word, lookupResponse, (success) => {
+             if (success) {
+                vocabBtn.textContent = '✓ Added';
+             } else {
+                vocabBtn.textContent = 'Exists';
+                vocabBtn.title = "This word is already in your vocabulary list.";
+             }
+        });
+    });
+
     const language = lastSettings.language || 'japanese';
     chrome.runtime.sendMessage({ action: 'lookupWord', word: word, language: language }, (response) => {
         if (chrome.runtime.lastError) {
             content.innerHTML = `<div class="dict-error">Error: ${chrome.runtime.lastError.message}</div>`;
             ankiBtn.disabled = true;
+            vocabBtn.disabled = true;
             return;
         }
         if (response) {
@@ -239,13 +267,16 @@ function showDictionaryPopup(word, clickedElement) {
                 }
                 renderPopupContent(word, response, content);
                 ankiBtn.dataset.lookupResponse = JSON.stringify(response);
+                vocabBtn.dataset.lookupResponse = JSON.stringify(response);
             } else {
                 content.innerHTML = `<div class="dict-error">Error: ${response.error}</div>`;
                 ankiBtn.disabled = true;
+                vocabBtn.disabled = true;
             }
         } else {
             content.innerHTML = `<div class="dict-error">No response from background script.</div>`;
             ankiBtn.disabled = true;
+            vocabBtn.disabled = true;
         }
     });
 }
@@ -629,5 +660,34 @@ async function addNoteToAnki(word, sentence, sourceLanguage, targetLanguage, cal
         }
     } catch (e) {
         callback(false, "Could not connect to Anki or AnkiConnect error: " + e.message);
+    }
+}
+
+async function addWordToVocabList(word, lookupResponse, callback) {
+    const VOCAB_LIST_KEY = 'userVocabularyList';
+    try {
+        const result = await chrome.storage.local.get([VOCAB_LIST_KEY]);
+        let vocabList = result[VOCAB_LIST_KEY] || [];
+
+        const isDuplicate = vocabList.some(item => item.word.toLowerCase() === word.toLowerCase());
+
+        if (isDuplicate) {
+            console.log(`Word "${word}" is already in the vocab list.`);
+            callback(false);
+            return;
+        }
+
+        vocabList.push({
+            word: word,
+            addedOn: new Date().toISOString(),
+            response: lookupResponse
+        });
+
+        await chrome.storage.local.set({ [VOCAB_LIST_KEY]: vocabList });
+        callback(true);
+
+    } catch (e) {
+        console.error("Could not add word to vocab list:", e);
+        callback(false);
     }
 }

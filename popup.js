@@ -41,6 +41,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterInput = document.getElementById('filter-input');
     const deeplApiKeyInput = document.getElementById('deepl-api-key-input');
     const dictionaryProviderSelect = document.getElementById('dictionary-provider-select');
+    const vocabTabBtn = document.getElementById('vocab-tab-btn');
+    const vocabListContainer = document.getElementById('vocab-list-container');
+    const exportVocabBtn = document.getElementById('export-vocab-btn');
 
     const DEEPL_KEY_STORAGE = 'deepl_api_key';
     const DICTIONARY_PROVIDER_KEY = 'dictionaryProviderSettings';
@@ -100,6 +103,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const UI_STATE_KEY = 'ui_lastState';
     const LAST_SEARCH_TIME_KEY = 'lastSearchTimestamp';
     const SEARCH_COOLDOWN = 5000;
+    const VOCAB_LIST_KEY = 'userVocabularyList';
 
     const defaultSettings = {
         offset: 0,
@@ -582,8 +586,105 @@ document.addEventListener('DOMContentLoaded', function() {
             showStatusMessage('<i>Enter a name and click Search.</i>');
         }
     }
+
+    function formatDefinitionForTooltip(response) {
+        if (!response || !response.success || !response.data) {
+            return 'No definition available.';
+        }
+
+        let definition = '';
+        if (response.source === 'jisho') {
+            const entry = response.data.data[0];
+            if (!entry) return 'No definition found.';
+            const japanese = entry.japanese[0];
+            const reading = japanese.reading || '';
+            definition += `Reading: ${reading}\n\n`;
+            entry.senses.forEach(sense => {
+                definition += `[${sense.parts_of_speech.join(', ')}]\n`;
+                sense.english_definitions.forEach((def, i) => {
+                    definition += `${i + 1}. ${def}\n`;
+                });
+            });
+        } else if (response.source === 'google_translate' || response.source === 'deepl') {
+            definition = `Translation: ${response.data.translation}`;
+        }
+        return definition.trim();
+    }
+
+    async function renderVocabList() {
+        const { [VOCAB_LIST_KEY]: vocabList = [] } = await chrome.storage.local.get([VOCAB_LIST_KEY]);
+        vocabListContainer.innerHTML = '';
+
+        if (vocabList.length === 0) {
+            vocabListContainer.innerHTML = '<i>Your vocabulary list is empty. Add words using the dictionary popup.</i>';
+            return;
+        }
+
+        vocabList.sort((a, b) => new Date(b.addedOn) - new Date(a.addedOn));
+
+        vocabList.forEach((item, index) => {
+            const entryDiv = document.createElement('div');
+            entryDiv.className = 'vocab-item';
+            entryDiv.title = formatDefinitionForTooltip(item.response);
+
+            const wordSpan = document.createElement('span');
+            wordSpan.className = 'vocab-word-text';
+            wordSpan.textContent = item.word;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'vocab-remove-btn';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.title = 'Remove word';
+            removeBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const list = (await chrome.storage.local.get([VOCAB_LIST_KEY]))[VOCAB_LIST_KEY] || [];
+                const updatedList = list.filter(i => i.word.toLowerCase() !== item.word.toLowerCase());
+                await chrome.storage.local.set({ [VOCAB_LIST_KEY]: updatedList });
+                renderVocabList();
+            });
+
+            entryDiv.appendChild(wordSpan);
+            entryDiv.appendChild(removeBtn);
+            vocabListContainer.appendChild(entryDiv);
+        });
+    }
+
+    async function exportVocabList() {
+        const { [VOCAB_LIST_KEY]: vocabList = [] } = await chrome.storage.local.get([VOCAB_LIST_KEY]);
+        if (vocabList.length === 0) {
+            alert("Your vocabulary list is empty.");
+            return;
+        }
+
+        let textContent = "My Simple Subtitle Tool - Vocabulary List\n\n";
+        textContent += "========================================\n\n";
+
+        vocabList.forEach(item => {
+            textContent += `Word: ${item.word}\n`;
+            textContent += `Definition:\n${formatDefinitionForTooltip(item.response).replace(/\n/g, '\n  ')}\n`;
+            textContent += "\n========================================\n\n";
+        });
+
+        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'msst_vocab_list.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
     
-    tabButtons.forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            showTab(button.dataset.tab);
+            if (button.dataset.tab === 'vocab-tab') {
+                renderVocabList();
+            }
+        });
+    });
+
     backButton.addEventListener('click', () => {
         if (searchResultsCache) {
             renderSearchResults(searchResultsCache.data, searchResultsCache.errors);
@@ -596,6 +697,7 @@ document.addEventListener('DOMContentLoaded', function() {
             backButton.style.display = 'none';
         }
     });
+
     searchButton.addEventListener('click', async () => {
         const { [LAST_SEARCH_TIME_KEY]: lastSearchTimestamp = 0 } = await chrome.storage.local.get(LAST_SEARCH_TIME_KEY);
         const now = Date.now();
@@ -620,12 +722,14 @@ document.addEventListener('DOMContentLoaded', function() {
         saveSearchHistory(query);
         chrome.runtime.sendMessage({ action: 'search', query: query, sources: selectedSources, language: language });
     });
+
     searchInput.addEventListener('keydown', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault();
             searchButton.click();
         }
     });
+
     sourceCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', () => {
             const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
@@ -635,6 +739,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
     loadFileBtn.addEventListener('click', () => fileInput.click());
+    exportVocabBtn.addEventListener('click', exportVocabList);
 
     transcriptContainer.addEventListener('click', (e) => {
         const entry = e.target.closest('.transcript-entry');
@@ -703,6 +808,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace === 'local' && changes[VOCAB_LIST_KEY]) {
+            if (document.getElementById('vocab-tab').classList.contains('active')) {
+                renderVocabList();
+            }
+        }
+    });
+
     function togglePanelSettings() {
         if (backgroundStyleSelect.value === 'panel') {
             panelWidthRow.style.display = 'flex';
@@ -718,6 +831,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function initialize() {
         loadSettings();
         loadSearchHistory();
+        renderVocabList();
         const subResult = await chrome.storage.session.get(SESSION_SUB_KEY);
         if (subResult[SESSION_SUB_KEY] && subResult[SESSION_SUB_KEY].data) {
             transcriptSubtitles = parseSrtForTranscript(subResult[SESSION_SUB_KEY].data);

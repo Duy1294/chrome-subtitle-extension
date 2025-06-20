@@ -411,3 +411,52 @@ main {
     border-radius: 4px;
     font-family: monospace;
 }
+
+#vocab-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--bg-lighter);
+}
+
+.vocab-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--bg-color);
+  border-radius: 4px;
+  border-left: 3px solid var(--accent-color);
+  cursor: help;
+}
+
+.vocab-word-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: white;
+}
+
+.vocab-remove-btn {
+  background: none;
+  border: none;
+  color: var(--fg-color);
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 5px;
+  border-radius: 50%;
+  line-height: 1;
+}
+
+.vocab-remove-btn:hover {
+  background-color: var(--danger-color);
+  color: white;
+}
+
+#export-vocab-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+}

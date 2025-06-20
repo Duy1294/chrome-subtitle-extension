@@ -9,6 +9,7 @@
       <button id="search-tab-btn" class="tabs-nav-btn active" data-tab="search-tab">Search</button>
       <button id="settings-tab-btn" class="tabs-nav-btn" data-tab="settings-tab">Settings</button>
       <button id="transcript-tab-btn" class="tabs-nav-btn" data-tab="transcript-tab">Transcript</button>
+      <button id="vocab-tab-btn" class="tabs-nav-btn" data-tab="vocab-tab">Vocab List</button>
     </nav>
 
     <main>
@@ -161,6 +162,16 @@
         <h3>Transcript</h3>
         <div id="transcript-container">
           <i>No transcript available. Load a subtitle file first.</i>
+        </div>
+      </div>
+
+      <div id="vocab-tab" class="tab-content">
+        <div class="setting-group" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>My Vocabulary List</h3>
+            <button id="export-vocab-btn" class="action-btn">Export to TXT</button>
+        </div>
+        <div id="vocab-list-container" style="flex-grow: 1; overflow-y: auto;">
+          <i>Your vocabulary list is empty. Add words using the dictionary popup.</i>
         </div>
       </div>
     </main>
