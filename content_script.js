@@ -442,23 +442,43 @@ async function initializeSubtitleInjector(video) {
     }
 }
 
+// ---------- BẮT ĐẦU THAY ĐỔI ----------
 function updateSubtitle() {
     if (!videoElement || !subtitleContainer) return;
     const currentTime = videoElement.currentTime;
-    let currentSubtitleIndex = parsedSubtitles.findIndex(sub => currentTime >= sub.startTime && currentTime <= sub.endTime);
-    if (currentSubtitleIndex !== -1) {
-        const currentSubtitle = parsedSubtitles[currentSubtitleIndex];
-        const lines = currentSubtitle.text.split('<br>').map(line => `<div>${line}</div>`).join('');
+
+    // Thay thế findIndex bằng filter để lấy TẤT CẢ các phụ đề đang hoạt động
+    const activeSubtitles = parsedSubtitles.filter(sub => currentTime >= sub.startTime && currentTime <= sub.endTime);
+
+    if (activeSubtitles.length > 0) {
+        // Kết hợp text của tất cả các phụ đề đang hoạt động
+        const combinedText = activeSubtitles
+            .map(sub => sub.text) // Lấy text từ mỗi object phụ đề
+            .join('<br>'); // Nối chúng lại với nhau bằng thẻ <br> để xuống dòng
+
+        // Xử lý để mỗi dòng text được bọc trong thẻ <div>
+        const lines = combinedText.split('<br>').map(line => `<div>${line}</div>`).join('');
         subtitleContainer.innerHTML = lines;
     } else {
+        // Nếu không có phụ đề nào, xóa nội dung container
         subtitleContainer.innerHTML = '';
     }
+
+    // Cập nhật logic highlight cho transcript
+    // Ta sẽ highlight phụ đề đầu tiên trong danh sách đang hoạt động
+    let currentSubtitleIndex = -1;
+    if (activeSubtitles.length > 0) {
+        // Tìm index của phụ đề đầu tiên đang hoạt động trong mảng gốc `parsedSubtitles`
+        currentSubtitleIndex = parsedSubtitles.indexOf(activeSubtitles[0]);
+    }
+
     if (currentSubtitleIndex !== lastAnnouncedIndex) {
         chrome.runtime.sendMessage({ action: 'updateTranscriptHighlight', index: currentSubtitleIndex })
             .catch(error => { if (!error.message.includes('Receiving end does not exist')) console.error("Error sending highlight message:", error); });
         lastAnnouncedIndex = currentSubtitleIndex;
     }
 }
+// ---------- KẾT THÚC THAY ĐỔI ----------
 
 function timeToSeconds(timeStr) {
     const timeRegex = /(?:(\d+):)?(\d+):(\d+)[,.](\d+)/;
