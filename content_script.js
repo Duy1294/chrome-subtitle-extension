@@ -329,27 +329,39 @@ function onDragMove(e) {
     if (newBottom < 0) newBottom = 0;
     if (newBottom > 95) newBottom = 95;
     subtitleContainer.style.bottom = `${newBottom}%`;
+    // Xóa thuộc tính 'top' khi đang kéo để tránh xung đột
+    subtitleContainer.style.top = ''; 
 }
 
 function onDragEnd(e) {
     isDragging = false;
     document.removeEventListener('mousemove', onDragMove);
     if (subtitleContainer) {
+        // Luôn tính toán và lưu 'position' dựa trên 'bottom' để thống nhất
         const finalPosition = parseFloat(subtitleContainer.style.bottom);
         userDefinedBottom = `${finalPosition}%`;
         lastSettings.position = finalPosition;
         chrome.storage.local.set({ [SETTINGS_KEY]: lastSettings });
         chrome.runtime.sendMessage({ action: 'updateSettingInPopup', setting: 'position', value: finalPosition });
+        
+        // Gọi lại updateSubtitleAppearance để áp dụng logic top/bottom chính xác sau khi kéo
+        updateSubtitleAppearance();
     }
 }
 
+
+// ---------- BẮT ĐẦU THAY ĐỔI LOGIC ----------
 function updateSubtitleAppearance() {
     if (!subtitleContainer || !lastSettings) return;
 
-    userDefinedBottom = `${lastSettings.position}%`;
+    // Đặt lại các thuộc tính vị trí trước khi tính toán lại
+    subtitleContainer.style.top = '';
+    subtitleContainer.style.bottom = '';
+
     const shouldBeElevated = videoElement && videoElement.paused && lastSettings.moveOnPause && lastSettings.backgroundStyle === 'panel';
 
     if (shouldBeElevated) {
+        // Logic di chuyển sub lên khi tạm dừng vẫn giữ nguyên (ưu tiên)
         const videoParent = subtitleContainer.parentElement;
         if (videoParent) {
             const parentHeight = videoParent.clientHeight;
@@ -360,9 +372,22 @@ function updateSubtitleAppearance() {
             subtitleContainer.style.bottom = `${newBottomInPercent}%`;
         }
     } else {
-        subtitleContainer.style.bottom = userDefinedBottom;
+        // Logic mới: Tự động chuyển đổi giữa 'top' và 'bottom'
+        const positionPercent = lastSettings.position || 5;
+
+        if (positionPercent > 50) {
+            // Nếu vị trí ở nửa trên màn hình, sử dụng 'top'
+            // Phụ đề sẽ được neo ở cạnh trên và phát triển xuống dưới
+            const topPercent = 100 - positionPercent;
+            subtitleContainer.style.top = `${topPercent}%`;
+        } else {
+            // Nếu vị trí ở nửa dưới màn hình, sử dụng 'bottom' (hành vi cũ)
+            // Phụ đề sẽ được neo ở cạnh dưới và phát triển lên trên
+            subtitleContainer.style.bottom = `${positionPercent}%`;
+        }
     }
 
+    // Các cài đặt hiển thị khác không thay đổi
     subtitleContainer.style.fontSize = `${lastSettings.fontSize}vw`;
     if (lastSettings.backgroundStyle === 'panel') {
         subtitleContainer.style.backgroundColor = '#282c34';
@@ -385,6 +410,8 @@ function updateSubtitleAppearance() {
         subtitleContainer.style.padding = '0';
     }
 }
+// ---------- KẾT THÚC THAY ĐỔI LOGIC ----------
+
 
 function cleanup(preserveState = false) {
     if (videoElement) {
@@ -442,33 +469,25 @@ async function initializeSubtitleInjector(video) {
     }
 }
 
-// ---------- BẮT ĐẦU THAY ĐỔI ----------
 function updateSubtitle() {
     if (!videoElement || !subtitleContainer) return;
     const currentTime = videoElement.currentTime;
 
-    // Thay thế findIndex bằng filter để lấy TẤT CẢ các phụ đề đang hoạt động
     const activeSubtitles = parsedSubtitles.filter(sub => currentTime >= sub.startTime && currentTime <= sub.endTime);
 
     if (activeSubtitles.length > 0) {
-        // Kết hợp text của tất cả các phụ đề đang hoạt động
         const combinedText = activeSubtitles
-            .map(sub => sub.text) // Lấy text từ mỗi object phụ đề
-            .join('<br>'); // Nối chúng lại với nhau bằng thẻ <br> để xuống dòng
+            .map(sub => sub.text) 
+            .join('<br>'); 
 
-        // Xử lý để mỗi dòng text được bọc trong thẻ <div>
         const lines = combinedText.split('<br>').map(line => `<div>${line}</div>`).join('');
         subtitleContainer.innerHTML = lines;
     } else {
-        // Nếu không có phụ đề nào, xóa nội dung container
         subtitleContainer.innerHTML = '';
     }
 
-    // Cập nhật logic highlight cho transcript
-    // Ta sẽ highlight phụ đề đầu tiên trong danh sách đang hoạt động
     let currentSubtitleIndex = -1;
     if (activeSubtitles.length > 0) {
-        // Tìm index của phụ đề đầu tiên đang hoạt động trong mảng gốc `parsedSubtitles`
         currentSubtitleIndex = parsedSubtitles.indexOf(activeSubtitles[0]);
     }
 
@@ -478,7 +497,6 @@ function updateSubtitle() {
         lastAnnouncedIndex = currentSubtitleIndex;
     }
 }
-// ---------- KẾT THÚC THAY ĐỔI ----------
 
 function timeToSeconds(timeStr) {
     const timeRegex = /(?:(\d+):)?(\d+):(\d+)[,.](\d+)/;
