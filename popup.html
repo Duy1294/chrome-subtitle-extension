@@ -64,11 +64,30 @@
               <option value="vietnamese">Vietnamese</option>
             </select>
           </div>
+          <div class="setting-row">
+            <label for="target-language-select">Translate To</label>
+            <select id="target-language-select">
+              <option value="VI">Vietnamese</option>
+              <option value="EN">English</option>
+              <option value="DE">German</option>
+              <option value="FR">French</option>
+              <option value="ES">Spanish</option>
+              <option value="JA">Japanese</option>
+            </select>
+          </div>
         </div>
         <div class="setting-group">
           <h3>Analysis Tools</h3>
           <label class="checkbox-label"><input type="checkbox" id="furigana-toggle"> Enable Furigana (Ruby)</label>
           <label class="checkbox-label"><input type="checkbox" id="dictionary-toggle"> Enable Popup Dictionary</label>
+        </div>
+        <div class="setting-group">
+          <h3>Dictionary Provider</h3>
+          <div class="setting-row">
+            <label for="dictionary-provider-select">Provider</label>
+            <select id="dictionary-provider-select" class="input-group">
+            </select>
+          </div>
         </div>
         <div class="setting-group">
           <h3>Subtitle Timing</h3>

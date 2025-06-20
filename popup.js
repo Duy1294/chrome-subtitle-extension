@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const furiganaToggle = document.getElementById('furigana-toggle');
     const dictionaryToggle = document.getElementById('dictionary-toggle');
     const languageSelect = document.getElementById('language-select');
+    const targetLanguageSelect = document.getElementById('target-language-select');
     const loadFileBtn = document.getElementById('load-file-btn');
     const fileInput = document.getElementById('file-input');
     const tabButtons = document.querySelectorAll('.tabs-nav-btn');
@@ -39,12 +40,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const filterContainer = document.getElementById('filter-container');
     const filterInput = document.getElementById('filter-input');
     const deeplApiKeyInput = document.getElementById('deepl-api-key-input');
+    const dictionaryProviderSelect = document.getElementById('dictionary-provider-select');
 
     const DEEPL_KEY_STORAGE = 'deepl_api_key';
+    const DICTIONARY_PROVIDER_KEY = 'dictionaryProviderSettings';
+    const TARGET_LANGUAGE_KEY = 'targetTranslationLanguage';
 
     deeplApiKeyInput.addEventListener('change', () => {
         const key = deeplApiKeyInput.value.trim();
         chrome.storage.local.set({ [DEEPL_KEY_STORAGE]: key });
+    });
+
+    targetLanguageSelect.addEventListener('change', () => {
+        chrome.storage.local.set({ [TARGET_LANGUAGE_KEY]: targetLanguageSelect.value });
     });
 
     filterInput.addEventListener('input', () => {
@@ -100,15 +108,80 @@ document.addEventListener('DOMContentLoaded', function() {
         enableFurigana: false,
         enableDictionary: false,
         language: 'japanese',
+        targetLanguage: 'VI',
         moveOnPause: false,
         backgroundStyle: 'default',
         panelWidth: 90,
-        panelHeight: 80
+        panelHeight: 80,
+        dictionaryProvider: {
+            japanese: 'jisho',
+            german: 'deepl',
+            english: 'deepl',
+            french: 'deepl',
+            spanish: 'deepl',
+            vietnamese: 'google_translate'
+        }
     };
 
     let transcriptSubtitles = [];
     let currentlyHighlighted = null;
     let searchResultsCache = null;
+
+    async function updateDictionaryProviderOptions() {
+        const currentLanguage = languageSelect.value;
+        
+        const availableProviders = {
+            japanese: [
+                { value: 'jisho', text: 'Jisho.org' },
+                { value: 'google_translate', text: 'Google Translate' }
+            ],
+            german: [
+                { value: 'deepl', text: 'DeepL' },
+                { value: 'google_translate', text: 'Google Translate' }
+            ],
+            english: [
+                { value: 'deepl', text: 'DeepL' },
+                { value: 'google_translate', text: 'Google Translate' }
+            ],
+            french: [
+                { value: 'deepl', text: 'DeepL' },
+                { value: 'google_translate', text: 'Google Translate' }
+            ],
+            spanish: [
+                { value: 'deepl', text: 'DeepL' },
+                { value: 'google_translate', text: 'Google Translate' }
+            ],
+            vietnamese: [
+                { value: 'google_translate', text: 'Google Translate' }
+            ]
+        };
+
+        dictionaryProviderSelect.innerHTML = '';
+        const providersForLang = availableProviders[currentLanguage] || availableProviders.english;
+        
+        providersForLang.forEach(provider => {
+            const option = document.createElement('option');
+            option.value = provider.value;
+            option.textContent = provider.text;
+            dictionaryProviderSelect.appendChild(option);
+        });
+
+        const result = await chrome.storage.local.get(DICTIONARY_PROVIDER_KEY);
+        const savedProviders = result[DICTIONARY_PROVIDER_KEY] || defaultSettings.dictionaryProvider;
+        dictionaryProviderSelect.value = savedProviders[currentLanguage] || providersForLang[0].value;
+    }
+
+    async function saveDictionaryProviderSetting() {
+        const currentLanguage = languageSelect.value;
+        const selectedProvider = dictionaryProviderSelect.value;
+
+        const result = await chrome.storage.local.get(DICTIONARY_PROVIDER_KEY);
+        let savedProviders = result[DICTIONARY_PROVIDER_KEY] || defaultSettings.dictionaryProvider;
+        
+        savedProviders[currentLanguage] = selectedProvider;
+
+        chrome.storage.local.set({ [DICTIONARY_PROVIDER_KEY]: savedProviders });
+    }
 
     fileInput.addEventListener('change', (event) => {
         clearAllSubtitleState(true);
@@ -272,6 +345,7 @@ document.addEventListener('DOMContentLoaded', function() {
             enableFurigana: furiganaToggle.checked,
             enableDictionary: dictionaryToggle.checked,
             language: languageSelect.value,
+            targetLanguage: targetLanguageSelect.value,
             moveOnPause: moveOnPauseToggle.checked,
             backgroundStyle: backgroundStyleSelect.value,
             panelWidth: parseInt(panelWidthInput.value, 10) || 90,
@@ -307,7 +381,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function loadSettings() {
-        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE], (result) => {
+        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE, DICTIONARY_PROVIDER_KEY, TARGET_LANGUAGE_KEY], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
             const currentSettings = { ...defaultSettings, ...savedSettings };
             offsetInput.value = currentSettings.offset.toFixed(1);
@@ -316,11 +390,14 @@ document.addEventListener('DOMContentLoaded', function() {
             furiganaToggle.checked = currentSettings.enableFurigana;
             dictionaryToggle.checked = currentSettings.enableDictionary;
             languageSelect.value = currentSettings.language;
+            targetLanguageSelect.value = result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage;
             moveOnPauseToggle.checked = currentSettings.moveOnPause;
             backgroundStyleSelect.value = currentSettings.backgroundStyle;
             panelWidthInput.value = currentSettings.panelWidth;
             panelHeightInput.value = currentSettings.panelHeight;
             togglePanelSettings();
+
+            updateDictionaryProviderOptions();
 
             const savedSources = result[SELECTED_SOURCES_KEY];
             if (savedSources && savedSources.length > 0) {
@@ -576,6 +653,9 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+    languageSelect.addEventListener('change', updateDictionaryProviderOptions);
+    dictionaryProviderSelect.addEventListener('change', saveDictionaryProviderSetting);
 
     offsetMinusBtn.addEventListener('click', () => adjustValue(offsetInput, -0.1, 1));
     offsetPlusBtn.addEventListener('click', () => adjustValue(offsetInput, 0.1, 1));

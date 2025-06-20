@@ -38,6 +38,15 @@ const tokenizerPromise = new Promise((resolve) => {
     });
 });
 
+const langCodeToName = {
+    'EN': 'English',
+    'VI': 'Vietnamese',
+    'DE': 'German',
+    'FR': 'French',
+    'ES': 'Spanish',
+    'JA': 'Japanese'
+};
+
 function katakanaToHiragana(kata) {
     if (!kata) return '';
     return String.fromCharCode(...[...kata].map(c => c.codePointAt(0) - 0x60));
@@ -119,12 +128,13 @@ function renderPopupContent(word, response, container) {
         });
     }
     else if (response.source === 'google_translate' || response.source === 'deepl') {
+        const targetLangName = langCodeToName[response.targetLanguage] || response.targetLanguage;
         html += `<div class="dict-entry">`;
         html += `<div class="dict-entry-japanese">`;
         html += `<span class="dict-entry-word">${response.data.word}</span>`;
         html += `</div>`;
         html += `<div class="dict-entry-sense">`;
-        html += `<div class="dict-entry-pos">Translation (Vietnamese)</div>`;
+        html += `<div class="dict-entry-pos">Translation (${targetLangName})</div>`;
         html += `<ol class="dict-entry-definitions">`;
         html += `<li>${response.data.translation}</li>`;
         html += `</ol>`;
@@ -191,11 +201,16 @@ function showDictionaryPopup(word, clickedElement) {
     const closePopup = () => { backdrop.remove(); };
     closeBtn.addEventListener('click', closePopup);
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closePopup(); });
+    
     ankiBtn.addEventListener('click', () => {
         ankiBtn.textContent = 'Adding...';
         ankiBtn.disabled = true;
-        const language = lastSettings.language || 'japanese';
-        addNoteToAnki(word, contextSentence, language, (success, error) => {
+        
+        const lookupResponse = JSON.parse(ankiBtn.dataset.lookupResponse || '{}');
+        const sourceLanguage = lastSettings.language || 'japanese';
+        const targetLanguage = lookupResponse.targetLanguage || 'VI';
+
+        addNoteToAnki(word, contextSentence, sourceLanguage, targetLanguage, (success, error) => {
             if (success) {
                 ankiBtn.textContent = '✓ Added';
             } else {
@@ -205,6 +220,7 @@ function showDictionaryPopup(word, clickedElement) {
             }
         });
     });
+
     const language = lastSettings.language || 'japanese';
     chrome.runtime.sendMessage({ action: 'lookupWord', word: word, language: language }, (response) => {
         if (chrome.runtime.lastError) {
@@ -532,18 +548,21 @@ setTimeout(() => {
 observer = new MutationObserver(handleDOMChanges);
 observer.observe(document.body, { childList: true, subtree: true });
 
-async function addNoteToAnki(word, sentence, language, callback) {
+async function addNoteToAnki(word, sentence, sourceLanguage, targetLanguage, callback) {
     const ankiBtn = document.getElementById('dictionary-popup-anki-btn');
     const lookupResponse = JSON.parse(ankiBtn.dataset.lookupResponse || '{}');
     if (!lookupResponse.success || !lookupResponse.data) {
         callback(false, "No dictionary data available.");
         return;
     }
-    const langUpper = language.charAt(0).toUpperCase() + language.slice(1);
-    const desiredDeckName = `Created by MSST - ${langUpper}`;
+    const sourceLangUpper = sourceLanguage.charAt(0).toUpperCase() + sourceLanguage.slice(1);
+    const desiredDeckName = `Created by MSST - ${sourceLangUpper}`;
     const desiredModelName = "Basic";
     let fields = {};
-    if (language === 'japanese' && lookupResponse.source === 'jisho') {
+
+    const targetLangName = langCodeToName[targetLanguage] || targetLanguage;
+
+    if (sourceLanguage === 'japanese' && lookupResponse.source === 'jisho') {
         const firstEntry = lookupResponse.data.data[0];
         const japanese = firstEntry.japanese[0];
         const reading = japanese.reading || '';
@@ -552,7 +571,7 @@ async function addNoteToAnki(word, sentence, language, callback) {
             "Front": word,
             "Back": `<div style="text-align:left;">
                         <b>Reading:</b> ${reading}<br>
-                        <b>Definition:</b><br>${definitions.replace(/\n/g, '<br>')}<br><hr>
+                        <b>Definition (English):</b><br>${definitions.replace(/\n/g, '<br>')}<br><hr>
                         <b>Sentence:</b> ${sentence}
                      </div>`
         };
@@ -561,11 +580,12 @@ async function addNoteToAnki(word, sentence, language, callback) {
         fields = {
             "Front": word,
             "Back": `<div style="text-align:left;">
-                        <b>Translation (VI):</b> ${translation}<br><hr>
+                        <b>Translation (${targetLangName}):</b> ${translation}<br><hr>
                         <b>Sentence:</b> ${sentence}
                      </div>`
         };
     }
+
     try {
         await fetch('http://127.0.0.1:8765', {
             method: 'POST',
@@ -584,7 +604,7 @@ async function addNoteToAnki(word, sentence, language, callback) {
                 "duplicateScope": "deck"
             },
             tags: [
-                `from_extension_${language}`
+                `from_extension_${sourceLanguage}`
             ]
         };
         const addNoteResponse = await fetch('http://127.0.0.1:8765', {
