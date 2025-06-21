@@ -44,6 +44,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const vocabTabBtn = document.getElementById('vocab-tab-btn');
     const vocabListContainer = document.getElementById('vocab-list-container');
     const exportVocabBtn = document.getElementById('export-vocab-btn');
+    const textColorInput = document.getElementById('text-color-input');
+    const colorPickerInput = document.getElementById('color-picker-input');
+    const radiantToggle = document.getElementById('radiant-toggle');
+    const radiantSpeedRow = document.getElementById('radiant-speed-row');
+    const radiantSpeedSlider = document.getElementById('radiant-speed-slider');
+    const radiantSpeedValue = document.getElementById('radiant-speed-value');
 
     const DEEPL_KEY_STORAGE = 'deepl_api_key';
     const DICTIONARY_PROVIDER_KEY = 'dictionaryProviderSettings';
@@ -71,6 +77,9 @@ document.addEventListener('DOMContentLoaded', function() {
         backgroundStyle: 'default',
         panelWidth: 90,
         panelHeight: 80,
+        textColor: '#FFFFFF',
+        radiantEnabled: false,
+        radiantSpeed: 5,
         dictionaryProvider: {
             japanese: 'jisho',
             german: 'deepl',
@@ -135,6 +144,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function toggleRadiantSpeedSlider() {
+        radiantSpeedRow.style.display = radiantToggle.checked ? 'flex' : 'none';
+    }
+
     deeplApiKeyInput.addEventListener('change', () => {
         const key = deeplApiKeyInput.value.trim();
         chrome.storage.local.set({ [DEEPL_KEY_STORAGE]: key });
@@ -142,17 +155,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
     targetLanguageSelect.addEventListener('change', () => {
         chrome.storage.local.set({ [TARGET_LANGUAGE_KEY]: targetLanguageSelect.dataset.value });
+        applySettingsFromPanel(false);
     });
     
     languageSelect.addEventListener('change', () => {
       updateDictionaryProviderOptions();
+      applySettingsFromPanel(false);
     });
     
     dictionaryProviderSelect.addEventListener('change', () => {
-      saveDictionaryProviderSetting();
+        saveDictionaryProviderSetting();
+        applySettingsFromPanel(false);
     });
 
-    backgroundStyleSelect.addEventListener('change', togglePanelSettings);
+    backgroundStyleSelect.addEventListener('change', () => {
+        togglePanelSettings();
+        applySettingsFromPanel(false);
+    });
+    
+    colorPickerInput.addEventListener('input', () => {
+        textColorInput.value = colorPickerInput.value.toUpperCase();
+        applySettingsFromPanel(false);
+    });
+
+    textColorInput.addEventListener('input', () => {
+        const value = textColorInput.value;
+        if (/^#[0-9A-F]{6}$/i.test(value)) {
+            colorPickerInput.value = value;
+            applySettingsFromPanel(false);
+        }
+    });
+
+    radiantToggle.addEventListener('change', () => {
+        toggleRadiantSpeedSlider();
+        applySettingsFromPanel(false);
+    });
+    
+    radiantSpeedSlider.addEventListener('input', () => {
+        radiantSpeedValue.textContent = radiantSpeedSlider.value;
+        applySettingsFromPanel(false);
+    });
+
+    [furiganaToggle, dictionaryToggle, moveOnPauseToggle].forEach(toggle => {
+        toggle.addEventListener('change', () => applySettingsFromPanel(false));
+    });
 
     filterInput.addEventListener('input', () => {
         const filterText = filterInput.value.toLowerCase();
@@ -393,16 +439,27 @@ document.addEventListener('DOMContentLoaded', function() {
             moveOnPause: moveOnPauseToggle.checked,
             backgroundStyle: backgroundStyleSelect.dataset.value,
             panelWidth: parseInt(panelWidthInput.value, 10) || 90,
-            panelHeight: parseInt(panelHeightInput.value, 10) || 80
+            panelHeight: parseInt(panelHeightInput.value, 10) || 80,
+            textColor: textColorInput.value,
+            radiantEnabled: radiantToggle.checked,
+            radiantSpeed: parseInt(radiantSpeedSlider.value, 10) || 5,
         };
     }
 
     async function applySettingsFromPanel(newDataLoaded = false) {
         const settings = getSettingsFromPanel();
-        applyStatus.textContent = newDataLoaded ? 'Subtitle loaded and settings applied.' : 'Settings updated.';
-        applyStatus.className = 'status-message success';
-        applyStatus.style.display = 'block';
-        setTimeout(() => { applyStatus.style.display = 'none'; }, 3000);
+        
+        if (!newDataLoaded) {
+            applyStatus.textContent = 'Settings updated.';
+            applyStatus.className = 'status-message success';
+            applyStatus.style.display = 'block';
+            setTimeout(() => { applyStatus.style.display = 'none'; }, 1500);
+        } else {
+             applyStatus.textContent =  'Subtitle loaded and settings applied.';
+             applyStatus.className = 'status-message success';
+             applyStatus.style.display = 'block';
+             setTimeout(() => { applyStatus.style.display = 'none'; }, 3000);
+        }
 
         chrome.storage.local.set({ [SETTINGS_KEY]: settings });
 
@@ -441,7 +498,14 @@ document.addEventListener('DOMContentLoaded', function() {
             setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
             setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
             
+            radiantToggle.checked = currentSettings.radiantEnabled;
+            textColorInput.value = currentSettings.textColor;
+            colorPickerInput.value = currentSettings.textColor;
+            radiantSpeedSlider.value = currentSettings.radiantSpeed;
+            radiantSpeedValue.textContent = currentSettings.radiantSpeed;
+            
             togglePanelSettings();
+            toggleRadiantSpeedSlider();
             updateDictionaryProviderOptions();
 
             const savedSources = result[SELECTED_SOURCES_KEY];
@@ -496,6 +560,7 @@ document.addEventListener('DOMContentLoaded', function() {
         currentValue = (currentValue || 0) + amount;
         if (currentValue < 0 && inputElement.id !== 'offset-input') currentValue = 0;
         inputElement.value = currentValue.toFixed(precision);
+        applySettingsFromPanel(false);
     }
     
     function createItem(item, onLoad, onAppend) {
@@ -800,16 +865,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    offsetMinusBtn.addEventListener('click', () => adjustValue(offsetInput, -0.1, 1));
-    offsetPlusBtn.addEventListener('click', () => adjustValue(offsetInput, 0.1, 1));
-    positionDownBtn.addEventListener('click', () => adjustValue(positionInput, -1, 0));
-    positionUpBtn.addEventListener('click', () => adjustValue(positionInput, 1, 0));
-    fontsizeMinusBtn.addEventListener('click', () => adjustValue(fontsizeInput, -0.1, 1));
-    fontsizePlusBtn.addEventListener('click', () => adjustValue(fontsizeInput, 0.1, 1));
-    panelWidthMinusBtn.addEventListener('click', () => adjustValue(panelWidthInput, -1, 0));
-    panelWidthPlusBtn.addEventListener('click', () => adjustValue(panelWidthInput, 1, 0));
-    panelHeightMinusBtn.addEventListener('click', () => adjustValue(panelHeightInput, -5, 0));
-    panelHeightPlusBtn.addEventListener('click', () => adjustValue(panelHeightInput, 5, 0));
+    [offsetMinusBtn, offsetPlusBtn, positionDownBtn, positionUpBtn, fontsizeMinusBtn, fontsizePlusBtn, panelWidthMinusBtn, panelWidthPlusBtn, panelHeightMinusBtn, panelHeightPlusBtn].forEach(btn => {
+        btn.addEventListener('click', () => {
+            const inputId = btn.id.replace(/-(minus|plus|down|up)/, '-input');
+            const inputElement = document.getElementById(inputId);
+            let amount = 0;
+            let precision = 0;
+            if (btn.id.includes('offset')) { amount = btn.id.includes('minus') ? -0.1 : 0.1; precision = 1; }
+            else if (btn.id.includes('position')) { amount = btn.id.includes('down') ? -1 : 1; precision = 0; }
+            else if (btn.id.includes('fontsize')) { amount = btn.id.includes('minus') ? -0.1 : 0.1; precision = 1; }
+            else if (btn.id.includes('panel-width')) { amount = btn.id.includes('minus') ? -1 : 1; precision = 0; }
+            else if (btn.id.includes('panel-height')) { amount = btn.id.includes('minus') ? -5 : 5; precision = 0; }
+            
+            let currentValue = (precision === 0) ? parseInt(inputElement.value, 10) : parseFloat(inputElement.value);
+            currentValue = (currentValue || 0) + amount;
+            if (currentValue < 0 && inputElement.id !== 'offset-input') currentValue = 0;
+            inputElement.value = currentValue.toFixed(precision);
+            applySettingsFromPanel(false);
+        });
+    });
 
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (request.action === 'searchResults') {

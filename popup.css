@@ -460,7 +460,6 @@ main {
     font-size: 12px;
 }
 
-/* Custom Select Dropdown Styles */
 .custom-select-wrapper {
   flex-basis: 55%;
   position: relative;
@@ -527,4 +526,59 @@ main {
 .custom-option.selected {
   background-color: var(--accent-color-hover);
   color: white;
+}
+
+.color-input-wrapper {
+    flex-basis: 55%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#color-picker-input {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
+#color-picker-input::-webkit-color-swatch {
+    border-radius: 3px;
+    border: none;
+}
+#color-picker-input::-moz-color-swatch {
+    border-radius: 3px;
+    border: none;
+}
+
+#text-color-input {
+    flex-grow: 1;
+    background-color: var(--bg-lighter);
+    border: 1px solid var(--border-color);
+    color: white;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+.slider-wrapper {
+  flex-basis: 55%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#radiant-speed-slider {
+  flex-grow: 1;
+}
+
+#radiant-speed-value {
+  width: 20px;
+  text-align: center;
+  font-weight: bold;
+  color: var(--accent-color);
 }

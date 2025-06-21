@@ -21,7 +21,10 @@ const defaultSettings = {
     moveOnPause: false,
     backgroundStyle: 'default',
     panelWidth: 90,
-    panelHeight: 80
+    panelHeight: 80,
+    textColor: '#FFFFFF',
+    radiantEnabled: false,
+    radiantSpeed: 5,
 };
 let observer = null;
 let dictionaryIsEnabled = false;
@@ -329,7 +332,6 @@ function onDragMove(e) {
     if (newBottom < 0) newBottom = 0;
     if (newBottom > 95) newBottom = 95;
     subtitleContainer.style.bottom = `${newBottom}%`;
-    // Xóa thuộc tính 'top' khi đang kéo để tránh xung đột
     subtitleContainer.style.top = ''; 
 }
 
@@ -337,31 +339,25 @@ function onDragEnd(e) {
     isDragging = false;
     document.removeEventListener('mousemove', onDragMove);
     if (subtitleContainer) {
-        // Luôn tính toán và lưu 'position' dựa trên 'bottom' để thống nhất
         const finalPosition = parseFloat(subtitleContainer.style.bottom);
         userDefinedBottom = `${finalPosition}%`;
         lastSettings.position = finalPosition;
         chrome.storage.local.set({ [SETTINGS_KEY]: lastSettings });
         chrome.runtime.sendMessage({ action: 'updateSettingInPopup', setting: 'position', value: finalPosition });
         
-        // Gọi lại updateSubtitleAppearance để áp dụng logic top/bottom chính xác sau khi kéo
         updateSubtitleAppearance();
     }
 }
 
-
-// ---------- BẮT ĐẦU THAY ĐỔI LOGIC ----------
 function updateSubtitleAppearance() {
     if (!subtitleContainer || !lastSettings) return;
 
-    // Đặt lại các thuộc tính vị trí trước khi tính toán lại
     subtitleContainer.style.top = '';
     subtitleContainer.style.bottom = '';
 
     const shouldBeElevated = videoElement && videoElement.paused && lastSettings.moveOnPause && lastSettings.backgroundStyle === 'panel';
 
     if (shouldBeElevated) {
-        // Logic di chuyển sub lên khi tạm dừng vẫn giữ nguyên (ưu tiên)
         const videoParent = subtitleContainer.parentElement;
         if (videoParent) {
             const parentHeight = videoParent.clientHeight;
@@ -372,26 +368,20 @@ function updateSubtitleAppearance() {
             subtitleContainer.style.bottom = `${newBottomInPercent}%`;
         }
     } else {
-        // Logic mới: Tự động chuyển đổi giữa 'top' và 'bottom'
         const positionPercent = lastSettings.position || 5;
 
         if (positionPercent > 50) {
-            // Nếu vị trí ở nửa trên màn hình, sử dụng 'top'
-            // Phụ đề sẽ được neo ở cạnh trên và phát triển xuống dưới
             const topPercent = 100 - positionPercent;
             subtitleContainer.style.top = `${topPercent}%`;
         } else {
-            // Nếu vị trí ở nửa dưới màn hình, sử dụng 'bottom' (hành vi cũ)
-            // Phụ đề sẽ được neo ở cạnh dưới và phát triển lên trên
             subtitleContainer.style.bottom = `${positionPercent}%`;
         }
     }
 
-    // Các cài đặt hiển thị khác không thay đổi
     subtitleContainer.style.fontSize = `${lastSettings.fontSize}vw`;
+
     if (lastSettings.backgroundStyle === 'panel') {
         subtitleContainer.style.backgroundColor = '#282c34';
-        subtitleContainer.style.textShadow = 'none';
         subtitleContainer.style.borderRadius = '4px';
         subtitleContainer.style.width = `${lastSettings.panelWidth}%`;
         subtitleContainer.style.height = `${lastSettings.panelHeight}px`;
@@ -401,7 +391,6 @@ function updateSubtitleAppearance() {
         subtitleContainer.style.padding = '0 0.5em';
     } else {
         subtitleContainer.style.backgroundColor = 'transparent';
-        subtitleContainer.style.textShadow = '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000';
         subtitleContainer.style.borderRadius = '0';
         subtitleContainer.style.width = '90%';
         subtitleContainer.style.height = 'auto';
@@ -409,9 +398,32 @@ function updateSubtitleAppearance() {
         subtitleContainer.style.justifyContent = 'initial';
         subtitleContainer.style.padding = '0';
     }
-}
-// ---------- KẾT THÚC THAY ĐỔI LOGIC ----------
 
+    subtitleContainer.classList.remove('radiant-text');
+    subtitleContainer.style.color = ''; 
+    subtitleContainer.style.textShadow = '';
+    subtitleContainer.style.animation = '';
+
+
+    if (lastSettings.radiantEnabled) {
+        subtitleContainer.classList.add('radiant-text');
+        subtitleContainer.style.textShadow = 'none';
+        
+        const speedLevel = lastSettings.radiantSpeed || 5;
+        const duration = (5.5 - (speedLevel * 0.5));
+        const finalDuration = Math.max(duration, 0.1);
+        
+        subtitleContainer.style.animation = `radiant-background-scroll ${finalDuration}s linear infinite alternate`;
+
+    } else {
+        subtitleContainer.style.color = lastSettings.textColor || '#FFFFFF';
+        if (lastSettings.backgroundStyle !== 'panel') {
+            subtitleContainer.style.textShadow = '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000';
+        } else {
+            subtitleContainer.style.textShadow = 'none';
+        }
+    }
+}
 
 function cleanup(preserveState = false) {
     if (videoElement) {

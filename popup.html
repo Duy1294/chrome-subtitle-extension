@@ -168,6 +168,23 @@
                 <span>px</span>
               </div>
           </div>
+           <div class="setting-row">
+              <label>Text Color</label>
+              <div class="color-input-wrapper">
+                  <input type="color" id="color-picker-input" value="#FFFFFF">
+                  <input type="text" id="text-color-input" maxlength="7" size="7" placeholder="#FFFFFF">
+              </div>
+          </div>
+          <label class="checkbox-label" style="margin-top: 10px;">
+              <input type="checkbox" id="radiant-toggle"> Enable Radiant Effect
+          </label>
+          <div id="radiant-speed-row" class="setting-row" style="display: none;">
+            <label for="radiant-speed-slider">Radiant Speed</label>
+            <div class="slider-wrapper">
+                <input type="range" id="radiant-speed-slider" min="1" max="10" value="5" step="1">
+                <span id="radiant-speed-value">5</span>
+            </div>
+          </div>
         </div>
         <button id="apply-btn" class="action-btn wide-btn">Apply to Video</button>
         <div id="apply-status" class="status-message" style="display: none;"></div>
