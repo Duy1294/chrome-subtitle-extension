@@ -8,14 +8,11 @@
     "activeTab",
     "scripting",
     "offscreen",
-    "tabs",
-    "sidePanel"
+    "tabs"
   ],
-  "side_panel": {
-    "default_path": "popup.html"
-  },
   "action": {
-    "default_title": "Open Subtitle Finder"
+    "default_title": "Open Subtitle Finder",
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"

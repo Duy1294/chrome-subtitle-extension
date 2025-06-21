@@ -1,7 +1,3 @@
-chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ windowId: tab.windowId });
-});
-
 async function getOrCreateOffscreenDocument() {
   const existingContexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
   if (existingContexts.length > 0) return;

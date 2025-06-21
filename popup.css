@@ -20,9 +20,10 @@ body {
   padding: 8px;
   width: 380px;
   box-sizing: border-box;
-  height: 100vh;
+  height: 550px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .container {
