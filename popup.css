@@ -471,7 +471,7 @@ main {
   background-color: var(--bg-lighter);
   border: 1px solid var(--border-color);
   color: var(--fg-color);
-  padding: 6px;
+  padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -484,7 +484,7 @@ main {
 }
 
 .custom-select-trigger::after {
-  content: '▼';
+  content: '\25BC';
   font-size: 0.6em;
   color: var(--fg-color);
   transition: transform 0.2s ease;

@@ -85,36 +85,29 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentlyHighlighted = null;
     let searchResultsCache = null;
 
-    function setupCustomSelect(selectElement) {
-        const trigger = selectElement.querySelector('.custom-select-trigger span');
-        const optionsContainer = selectElement.querySelector('.custom-options');
-        const options = optionsContainer.querySelectorAll('.custom-option');
-
-        function toggleDropdown() {
-            closeAllSelects(selectElement);
-            selectElement.classList.toggle('open');
-        }
-
-        selectElement.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleDropdown();
-        });
-
-        options.forEach(option => {
-            option.addEventListener('click', function(e) {
+    function initializeCustomSelects() {
+        document.querySelectorAll('.custom-select').forEach(selectElement => {
+            selectElement.addEventListener('click', function(e) {
                 e.stopPropagation();
-                if (selectElement.dataset.value !== this.dataset.value) {
-                    trigger.textContent = this.textContent;
-                    selectElement.dataset.value = this.dataset.value;
-
-                    const changeEvent = new CustomEvent('change', { detail: { value: this.dataset.value } });
-                    selectElement.dispatchEvent(changeEvent);
+                const clickedOption = e.target.closest('.custom-option');
+                
+                if (clickedOption) {
+                    const trigger = this.querySelector('.custom-select-trigger span');
+                    if (this.dataset.value !== clickedOption.dataset.value) {
+                        trigger.textContent = clickedOption.textContent;
+                        this.dataset.value = clickedOption.dataset.value;
+                        const changeEvent = new CustomEvent('change', { detail: { value: this.dataset.value } });
+                        this.dispatchEvent(changeEvent);
+                    }
+                    this.classList.remove('open');
+                } else {
+                    closeAllSelects(this);
+                    this.classList.toggle('open');
                 }
-                selectElement.classList.remove('open');
             });
         });
     }
-
+    
     function closeAllSelects(exceptThisOne) {
         document.querySelectorAll('.custom-select.open').forEach(openSelect => {
             if (openSelect !== exceptThisOne) {
@@ -125,8 +118,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.addEventListener('click', closeAllSelects);
 
-    document.querySelectorAll('.custom-select').forEach(setupCustomSelect);
-
     function setCustomSelectValue(selectElement, value) {
         if (!selectElement) return;
         const trigger = selectElement.querySelector('.custom-select-trigger span');
@@ -135,6 +126,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (optionToSelect) {
             trigger.textContent = optionToSelect.textContent;
             selectElement.dataset.value = value;
+        } else {
+            const firstOption = selectElement.querySelector('.custom-option');
+            if (firstOption) {
+                 trigger.textContent = firstOption.textContent;
+                 selectElement.dataset.value = firstOption.dataset.value;
+            }
         }
     }
 
@@ -212,8 +209,6 @@ document.addEventListener('DOMContentLoaded', function() {
             optionDiv.innerHTML = `<span>${provider.text}</span>`;
             optionsContainer.appendChild(optionDiv);
         });
-
-        setupCustomSelect(dictionaryProviderSelect);
 
         const result = await chrome.storage.local.get(DICTIONARY_PROVIDER_KEY);
         const savedProviders = result[DICTIONARY_PROVIDER_KEY] || defaultSettings.dictionaryProvider;
@@ -445,8 +440,8 @@ document.addEventListener('DOMContentLoaded', function() {
             setCustomSelectValue(languageSelect, currentSettings.language);
             setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
             setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
+            
             togglePanelSettings();
-
             updateDictionaryProviderOptions();
 
             const savedSources = result[SELECTED_SOURCES_KEY];
@@ -870,6 +865,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function initialize() {
+        initializeCustomSelects();
         loadSettings();
         loadSearchHistory();
         renderVocabList();
