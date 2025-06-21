@@ -310,20 +310,18 @@ main {
     flex-basis: 40%;
 }
 
-.input-group, #language-select {
+.input-group {
   flex-basis: 55%;
   background-color: var(--bg-lighter);
   border: 1px solid var(--border-color);
   color: var(--fg-color);
-  padding: 6px;
+  padding: 2px;
   border-radius: 4px;
-}
-.input-group {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 2px;
 }
+
 .input-group button {
   width: 28px;
   height: 28px;
@@ -460,4 +458,73 @@ main {
 #export-vocab-btn {
     padding: 4px 10px;
     font-size: 12px;
+}
+
+/* Custom Select Dropdown Styles */
+.custom-select-wrapper {
+  flex-basis: 55%;
+  position: relative;
+}
+
+.custom-select {
+  position: relative;
+  background-color: var(--bg-lighter);
+  border: 1px solid var(--border-color);
+  color: var(--fg-color);
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.custom-select-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.custom-select-trigger::after {
+  content: '▼';
+  font-size: 0.6em;
+  color: var(--fg-color);
+  transition: transform 0.2s ease;
+}
+
+.custom-select.open .custom-select-trigger::after {
+  transform: rotate(180deg);
+}
+
+.custom-options {
+  position: absolute;
+  display: none;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--bg-lighter);
+  border: 1px solid var(--border-color);
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  z-index: 10;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.custom-select.open .custom-options {
+  display: block;
+}
+
+.custom-option {
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.custom-option:hover {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.custom-option.selected {
+  background-color: var(--accent-color-hover);
+  color: white;
 }

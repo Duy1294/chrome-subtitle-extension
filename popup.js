@@ -48,52 +48,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const DEEPL_KEY_STORAGE = 'deepl_api_key';
     const DICTIONARY_PROVIDER_KEY = 'dictionaryProviderSettings';
     const TARGET_LANGUAGE_KEY = 'targetTranslationLanguage';
-
-    deeplApiKeyInput.addEventListener('change', () => {
-        const key = deeplApiKeyInput.value.trim();
-        chrome.storage.local.set({ [DEEPL_KEY_STORAGE]: key });
-    });
-
-    targetLanguageSelect.addEventListener('change', () => {
-        chrome.storage.local.set({ [TARGET_LANGUAGE_KEY]: targetLanguageSelect.value });
-    });
-
-    filterInput.addEventListener('input', () => {
-        const filterText = filterInput.value.toLowerCase();
-        const resultItems = resultsDiv.querySelectorAll('.result-item');
-        
-        resultItems.forEach(item => {
-            const title = item.querySelector('.result-title').textContent.toLowerCase();
-            if (title.includes(filterText)) {
-                item.style.display = 'flex';
-            } else {
-                item.style.display = 'none';
-            }
-        });
-    });
-
-    if (resetSettingsBtn) {
-        resetSettingsBtn.addEventListener('click', function() {
-            const isConfirmed = window.confirm(
-                "Are you sure you want to reset everything?\n\n" +
-                "This will delete all your saved settings, search history, and clear any loaded subtitles. " +
-                "The extension will be restored to its default state."
-            );
-
-            if (isConfirmed) {
-                chrome.storage.local.clear(() => {
-                    console.log('Local storage cleared.');
-                });
-                chrome.storage.session.clear(() => {
-                    console.log('Session storage cleared.');
-                });
-                chrome.runtime.sendMessage({ action: 'clearSubtitles' });
-                alert('All settings and data have been reset. The panel will now reload.');
-                window.location.reload();
-            }
-        });
-    }
-
     const SETTINGS_KEY = 'subtitleUserSettings';
     const SEARCH_HISTORY_KEY = 'subtitleSearchHistory';
     const SESSION_SUB_KEY = 'session_currentSubData';
@@ -131,53 +85,145 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentlyHighlighted = null;
     let searchResultsCache = null;
 
+    function setupCustomSelect(selectElement) {
+        const trigger = selectElement.querySelector('.custom-select-trigger span');
+        const optionsContainer = selectElement.querySelector('.custom-options');
+        const options = optionsContainer.querySelectorAll('.custom-option');
+
+        function toggleDropdown() {
+            closeAllSelects(selectElement);
+            selectElement.classList.toggle('open');
+        }
+
+        selectElement.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleDropdown();
+        });
+
+        options.forEach(option => {
+            option.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (selectElement.dataset.value !== this.dataset.value) {
+                    trigger.textContent = this.textContent;
+                    selectElement.dataset.value = this.dataset.value;
+
+                    const changeEvent = new CustomEvent('change', { detail: { value: this.dataset.value } });
+                    selectElement.dispatchEvent(changeEvent);
+                }
+                selectElement.classList.remove('open');
+            });
+        });
+    }
+
+    function closeAllSelects(exceptThisOne) {
+        document.querySelectorAll('.custom-select.open').forEach(openSelect => {
+            if (openSelect !== exceptThisOne) {
+                openSelect.classList.remove('open');
+            }
+        });
+    }
+
+    window.addEventListener('click', closeAllSelects);
+
+    document.querySelectorAll('.custom-select').forEach(setupCustomSelect);
+
+    function setCustomSelectValue(selectElement, value) {
+        if (!selectElement) return;
+        const trigger = selectElement.querySelector('.custom-select-trigger span');
+        const optionToSelect = selectElement.querySelector(`.custom-option[data-value="${value}"]`);
+
+        if (optionToSelect) {
+            trigger.textContent = optionToSelect.textContent;
+            selectElement.dataset.value = value;
+        }
+    }
+
+    deeplApiKeyInput.addEventListener('change', () => {
+        const key = deeplApiKeyInput.value.trim();
+        chrome.storage.local.set({ [DEEPL_KEY_STORAGE]: key });
+    });
+
+    targetLanguageSelect.addEventListener('change', () => {
+        chrome.storage.local.set({ [TARGET_LANGUAGE_KEY]: targetLanguageSelect.dataset.value });
+    });
+    
+    languageSelect.addEventListener('change', () => {
+      updateDictionaryProviderOptions();
+    });
+    
+    dictionaryProviderSelect.addEventListener('change', () => {
+      saveDictionaryProviderSetting();
+    });
+
+    backgroundStyleSelect.addEventListener('change', togglePanelSettings);
+
+    filterInput.addEventListener('input', () => {
+        const filterText = filterInput.value.toLowerCase();
+        const resultItems = resultsDiv.querySelectorAll('.result-item');
+        
+        resultItems.forEach(item => {
+            const title = item.querySelector('.result-title').textContent.toLowerCase();
+            if (title.includes(filterText)) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+
+    if (resetSettingsBtn) {
+        resetSettingsBtn.addEventListener('click', function() {
+            const isConfirmed = window.confirm(
+                "Are you sure you want to reset everything?\n\n" +
+                "This will delete all your saved settings, search history, and clear any loaded subtitles. " +
+                "The extension will be restored to its default state."
+            );
+
+            if (isConfirmed) {
+                chrome.storage.local.clear(() => {});
+                chrome.storage.session.clear(() => {});
+                chrome.runtime.sendMessage({ action: 'clearSubtitles' });
+                alert('All settings and data have been reset. The panel will now reload.');
+                window.location.reload();
+            }
+        });
+    }
+
     async function updateDictionaryProviderOptions() {
-        const currentLanguage = languageSelect.value;
+        const currentLanguage = languageSelect.dataset.value || 'japanese';
         
         const availableProviders = {
-            japanese: [
-                { value: 'jisho', text: 'Jisho.org' },
-                { value: 'google_translate', text: 'Google Translate' }
-            ],
-            german: [
-                { value: 'deepl', text: 'DeepL' },
-                { value: 'google_translate', text: 'Google Translate' }
-            ],
-            english: [
-                { value: 'deepl', text: 'DeepL' },
-                { value: 'google_translate', text: 'Google Translate' }
-            ],
-            french: [
-                { value: 'deepl', text: 'DeepL' },
-                { value: 'google_translate', text: 'Google Translate' }
-            ],
-            spanish: [
-                { value: 'deepl', text: 'DeepL' },
-                { value: 'google_translate', text: 'Google Translate' }
-            ],
-            vietnamese: [
-                { value: 'google_translate', text: 'Google Translate' }
-            ]
+            japanese: [{ value: 'jisho', text: 'Jisho.org' }, { value: 'google_translate', text: 'Google Translate' }],
+            german: [{ value: 'deepl', text: 'DeepL' }, { value: 'google_translate', text: 'Google Translate' }],
+            english: [{ value: 'deepl', text: 'DeepL' }, { value: 'google_translate', text: 'Google Translate' }],
+            french: [{ value: 'deepl', text: 'DeepL' }, { value: 'google_translate', text: 'Google Translate' }],
+            spanish: [{ value: 'deepl', text: 'DeepL' }, { value: 'google_translate', text: 'Google Translate' }],
+            vietnamese: [{ value: 'google_translate', text: 'Google Translate' }]
         };
 
-        dictionaryProviderSelect.innerHTML = '';
+        const optionsContainer = dictionaryProviderSelect.querySelector('.custom-options');
+        optionsContainer.innerHTML = '';
         const providersForLang = availableProviders[currentLanguage] || availableProviders.english;
         
         providersForLang.forEach(provider => {
-            const option = document.createElement('option');
-            option.value = provider.value;
-            option.textContent = provider.text;
-            dictionaryProviderSelect.appendChild(option);
+            const optionDiv = document.createElement('div');
+            optionDiv.className = 'custom-option';
+            optionDiv.dataset.value = provider.value;
+            optionDiv.innerHTML = `<span>${provider.text}</span>`;
+            optionsContainer.appendChild(optionDiv);
         });
+
+        setupCustomSelect(dictionaryProviderSelect);
 
         const result = await chrome.storage.local.get(DICTIONARY_PROVIDER_KEY);
         const savedProviders = result[DICTIONARY_PROVIDER_KEY] || defaultSettings.dictionaryProvider;
-        dictionaryProviderSelect.value = savedProviders[currentLanguage] || providersForLang[0].value;
+        const providerForCurrentLang = savedProviders[currentLanguage] || providersForLang[0].value;
+        setCustomSelectValue(dictionaryProviderSelect, providerForCurrentLang);
     }
 
     async function saveDictionaryProviderSetting() {
-        const currentLanguage = languageSelect.value;
-        const selectedProvider = dictionaryProviderSelect.value;
+        const currentLanguage = languageSelect.dataset.value;
+        const selectedProvider = dictionaryProviderSelect.dataset.value;
 
         const result = await chrome.storage.local.get(DICTIONARY_PROVIDER_KEY);
         let savedProviders = result[DICTIONARY_PROVIDER_KEY] || defaultSettings.dictionaryProvider;
@@ -204,7 +250,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => { applyStatus.style.display = 'none'; }, 4000);
             } catch (error) {
                 showStatusMessage(`<i>Error: Could not process file. It may be invalid or unsupported.</i>`, true);
-                console.error("Error processing local file:", error);
             }
         };
         reader.readAsText(file);
@@ -348,10 +393,10 @@ document.addEventListener('DOMContentLoaded', function() {
             fontSize: parseFloat(fontsizeInput.value) || 2.5,
             enableFurigana: furiganaToggle.checked,
             enableDictionary: dictionaryToggle.checked,
-            language: languageSelect.value,
-            targetLanguage: targetLanguageSelect.value,
+            language: languageSelect.dataset.value,
+            targetLanguage: targetLanguageSelect.dataset.value,
             moveOnPause: moveOnPauseToggle.checked,
-            backgroundStyle: backgroundStyleSelect.value,
+            backgroundStyle: backgroundStyleSelect.dataset.value,
             panelWidth: parseInt(panelWidthInput.value, 10) || 90,
             panelHeight: parseInt(panelHeightInput.value, 10) || 80
         };
@@ -393,12 +438,13 @@ document.addEventListener('DOMContentLoaded', function() {
             fontsizeInput.value = currentSettings.fontSize.toFixed(1);
             furiganaToggle.checked = currentSettings.enableFurigana;
             dictionaryToggle.checked = currentSettings.enableDictionary;
-            languageSelect.value = currentSettings.language;
-            targetLanguageSelect.value = result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage;
             moveOnPauseToggle.checked = currentSettings.moveOnPause;
-            backgroundStyleSelect.value = currentSettings.backgroundStyle;
             panelWidthInput.value = currentSettings.panelWidth;
             panelHeightInput.value = currentSettings.panelHeight;
+            
+            setCustomSelectValue(languageSelect, currentSettings.language);
+            setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
+            setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
             togglePanelSettings();
 
             updateDictionaryProviderOptions();
@@ -717,7 +763,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         await chrome.storage.local.set({ [LAST_SEARCH_TIME_KEY]: now });
-        const language = languageSelect.value;
+        const language = languageSelect.dataset.value;
         showStatusMessage('<i>Searching...</i>');
         saveSearchHistory(query);
         chrome.runtime.sendMessage({ action: 'search', query: query, sources: selectedSources, language: language });
@@ -758,9 +804,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
-
-    languageSelect.addEventListener('change', updateDictionaryProviderOptions);
-    dictionaryProviderSelect.addEventListener('change', saveDictionaryProviderSetting);
 
     offsetMinusBtn.addEventListener('click', () => adjustValue(offsetInput, -0.1, 1));
     offsetPlusBtn.addEventListener('click', () => adjustValue(offsetInput, 0.1, 1));
@@ -817,7 +860,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function togglePanelSettings() {
-        if (backgroundStyleSelect.value === 'panel') {
+        if (backgroundStyleSelect.dataset.value === 'panel') {
             panelWidthRow.style.display = 'flex';
             panelHeightRow.style.display = 'flex';
         } else {
@@ -826,8 +869,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    backgroundStyleSelect.addEventListener('change', togglePanelSettings);
-    
     async function initialize() {
         loadSettings();
         loadSearchHistory();

@@ -56,25 +56,35 @@
           <h3>Language Settings</h3>
           <div class="setting-row">
             <label for="language-select">Subtitle Language</label>
-            <select id="language-select">
-              <option value="japanese">Japanese</option>
-              <option value="german">German</option>
-              <option value="english">English</option>
-              <option value="french">French</option>
-              <option value="spanish">Spanish</option>
-              <option value="vietnamese">Vietnamese</option>
-            </select>
+            <div class="custom-select-wrapper">
+              <div id="language-select" class="custom-select">
+                <div class="custom-select-trigger"><span>Japanese</span></div>
+                <div class="custom-options">
+                  <div class="custom-option" data-value="japanese"><span>Japanese</span></div>
+                  <div class="custom-option" data-value="german"><span>German</span></div>
+                  <div class="custom-option" data-value="english"><span>English</span></div>
+                  <div class="custom-option" data-value="french"><span>French</span></div>
+                  <div class="custom-option" data-value="spanish"><span>Spanish</span></div>
+                  <div class="custom-option" data-value="vietnamese"><span>Vietnamese</span></div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="setting-row">
             <label for="target-language-select">Translate To</label>
-            <select id="target-language-select">
-              <option value="VI">Vietnamese</option>
-              <option value="EN">English</option>
-              <option value="DE">German</option>
-              <option value="FR">French</option>
-              <option value="ES">Spanish</option>
-              <option value="JA">Japanese</option>
-            </select>
+            <div class="custom-select-wrapper">
+              <div id="target-language-select" class="custom-select">
+                <div class="custom-select-trigger"><span>Vietnamese</span></div>
+                <div class="custom-options">
+                  <div class="custom-option" data-value="VI"><span>Vietnamese</span></div>
+                  <div class="custom-option" data-value="EN"><span>English</span></div>
+                  <div class="custom-option" data-value="DE"><span>German</span></div>
+                  <div class="custom-option" data-value="FR"><span>French</span></div>
+                  <div class="custom-option" data-value="ES"><span>Spanish</span></div>
+                  <div class="custom-option" data-value="JA"><span>Japanese</span></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="setting-group">
@@ -86,8 +96,13 @@
           <h3>Dictionary Provider</h3>
           <div class="setting-row">
             <label for="dictionary-provider-select">Provider</label>
-            <select id="dictionary-provider-select" class="input-group">
-            </select>
+            <div class="custom-select-wrapper">
+              <div id="dictionary-provider-select" class="custom-select">
+                <div class="custom-select-trigger"><span></span></div>
+                <div class="custom-options">
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="setting-group">
@@ -125,10 +140,15 @@
           </div>
           <div class="setting-row">
               <label for="background-style-select">Subtitle Background</label>
-              <select id="background-style-select" class="input-group">
-                <option value="default">Outline (Default)</option>
-                <option value="panel">Fixed Panel</option>
-              </select>
+              <div class="custom-select-wrapper">
+                  <div id="background-style-select" class="custom-select">
+                    <div class="custom-select-trigger"><span>Outline (Default)</span></div>
+                    <div class="custom-options">
+                      <div class="custom-option" data-value="default"><span>Outline (Default)</span></div>
+                      <div class="custom-option" data-value="panel"><span>Fixed Panel</span></div>
+                    </div>
+                  </div>
+              </div>
           </div>
           <div id="panel-width-row" class="setting-row" style="display: none;">
               <label for="panel-width-input">Panel Width</label>
