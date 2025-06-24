@@ -1,3 +1,5 @@
+import { Archive } from './libarchive.js';
+
 window.addEventListener('load', function() {
     function parseJimaku(doc, query) {
         const results = [];
@@ -152,63 +154,61 @@ window.addEventListener('load', function() {
         }
 
         if (request.action === 'fetchAndProcessFile') {
-            const { url, format } = request;
+            (async () => {
+                const { url, format } = request;
 
-            const processSubtitleContent = (subtitleText) => {
-                try {
-                    const cleanedText = subtitleText.replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '');
-                    if (!cleanedText || cleanedText.trim() === '') {
-                        throw new Error('Empty or invalid subtitle file.');
-                    }
-                    const captions = subsrt.parse(cleanedText);
-                    
-                    const cleanedCaptions = captions.map(caption => {
-                        caption.text = caption.text.replace(/{[^}]+}/g, '');
-                        caption.text = caption.text.replace(/\\N/g, '\n');
-                        return caption;
-                    });
-
-                    const srtContent = subsrt.build(cleanedCaptions, { format: 'srt' });
-                    chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: srtContent });
-                } catch (error) {
-                    console.error("Subsrt parsing/building error:", error);
-                    chrome.runtime.sendMessage({ action: 'fetchError', error: error.message || 'Could not parse subtitle file.' });
-                }
-            };
-            
-            const decodeWithFallback = async (buffer) => {
-                const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
-                let decodedText = utf8Decoder.decode(buffer);
-
-                if (decodedText.includes('\uFFFD')) {
-                    console.warn('UTF-8 decoding resulted in replacement characters. Falling back to windows-1252.');
-                    const fallbackDecoder = new TextDecoder('windows-1252');
-                    decodedText = fallbackDecoder.decode(buffer);
-                }
-                return decodedText;
-            };
-
-            const fetchAndDecode = (url) => {
-                return fetch(url)
-                    .then(response => {
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        const contentType = response.headers.get('content-type');
-                        if (contentType && contentType.includes('text/html')) {
-                            throw new Error('File is an HTML page, not a subtitle file.');
+                const processSubtitleContent = (subtitleText) => {
+                    try {
+                        const cleanedText = subtitleText.replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '');
+                        if (!cleanedText || cleanedText.trim() === '') {
+                            throw new Error('Empty or invalid subtitle file.');
                         }
-                        return response.arrayBuffer();
-                    })
-                    .then(buffer => decodeWithFallback(buffer));
-            };
+                        const captions = subsrt.parse(cleanedText);
+                        
+                        const cleanedCaptions = captions.map(caption => {
+                            caption.text = caption.text.replace(/{[^}]+}/g, '');
+                            caption.text = caption.text.replace(/\\N/g, '\n');
+                            return caption;
+                        });
 
-            if (format === 'zip') {
-                fetch(url)
-                    .then(response => {
+                        const srtContent = subsrt.build(cleanedCaptions, { format: 'srt' });
+                        chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: srtContent });
+                    } catch (error) {
+                        console.error("Subsrt parsing/building error:", error);
+                        chrome.runtime.sendMessage({ action: 'fetchError', error: error.message || 'Could not parse subtitle file.' });
+                    }
+                };
+                
+                const decodeWithFallback = async (buffer) => {
+                    const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
+                    let decodedText = utf8Decoder.decode(buffer);
+
+                    if (decodedText.includes('\uFFFD')) {
+                        console.warn('UTF-8 decoding resulted in replacement characters. Falling back to windows-1252.');
+                        const fallbackDecoder = new TextDecoder('windows-1252');
+                        decodedText = fallbackDecoder.decode(buffer);
+                    }
+                    return decodedText;
+                };
+
+                const fetchAndDecode = async (url) => {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('text/html')) {
+                        throw new Error('File is an HTML page, not a subtitle file.');
+                    }
+                    const buffer = await response.arrayBuffer();
+                    return decodeWithFallback(buffer);
+                };
+
+                try {
+                    if (format === 'zip') {
+                        const response = await fetch(url);
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        return response.arrayBuffer();
-                    })
-                    .then(data => JSZip.loadAsync(data))
-                    .then(zip => {
+                        const data = await response.arrayBuffer();
+                        const zip = await JSZip.loadAsync(data);
+                        
                         let subtitleEntry = null;
                         const preferredExtensions = ['.srt', '.ass', '.vtt'];
                         for (const ext of preferredExtensions) {
@@ -224,22 +224,52 @@ window.addEventListener('load', function() {
                         }
 
                         if (subtitleEntry) {
-                            return subtitleEntry.async('arraybuffer').then(buffer => decodeWithFallback(buffer));
+                            const buffer = await subtitleEntry.async('arraybuffer');
+                            const text = await decodeWithFallback(buffer);
+                            processSubtitleContent(text);
                         } else {
                             throw new Error('No subtitle file (.srt, .ass, .vtt) found in zip.');
                         }
-                    })
-                    .then(processSubtitleContent)
-                    .catch(error => {
-                        chrome.runtime.sendMessage({ action: 'fetchError', error: error.message });
-                    });
-            } else {
-                fetchAndDecode(url)
-                    .then(processSubtitleContent)
-                    .catch(error => {
-                        chrome.runtime.sendMessage({ action: 'fetchError', error: error.message });
-                    });
-            }
+                    } else if (format === 'rar') {
+                        await Archive.init({
+                            workerUrl: 'worker-bundle.js'
+                        });
+        
+                        const response = await fetch(url);
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        const blob = await response.blob();
+                        const file = new File([blob], "subtitle.rar");
+
+                        const archive = await Archive.open(file);
+                        const extractedFiles = await archive.extractFiles();
+                        
+                        let subtitleFile = null;
+                        const preferredExtensions = ['.srt', '.ass', '.vtt'];
+                         for (const ext of preferredExtensions) {
+                            for (const fileName in extractedFiles) {
+                                if (fileName.toLowerCase().endsWith(ext)) {
+                                    subtitleFile = extractedFiles[fileName];
+                                    break;
+                                }
+                            }
+                            if (subtitleFile) break;
+                        }
+
+                        if (subtitleFile) {
+                            const fileBuffer = await subtitleFile.arrayBuffer();
+                            const text = await decodeWithFallback(fileBuffer);
+                            processSubtitleContent(text);
+                        } else {
+                            throw new Error('No subtitle file (.srt, .ass, .vtt) found in rar archive.');
+                        }
+                    } else {
+                        const text = await fetchAndDecode(url);
+                        processSubtitleContent(text);
+                    }
+                } catch (error) {
+                    chrome.runtime.sendMessage({ action: 'fetchError', error: error.message });
+                }
+            })();
             return true;
         }
     });

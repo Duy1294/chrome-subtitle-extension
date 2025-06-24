@@ -656,6 +656,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 format = 'ass';
             } else if (url.includes('.zip')) {
                 format = 'zip';
+            } else if (url.includes('.rar')) {
+                format = 'rar';
             }
         }
         

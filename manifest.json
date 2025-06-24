@@ -17,6 +17,9 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
   "host_permissions": [
     "<all_urls>"
   ],
@@ -42,7 +45,10 @@
         "subsrt.js",
         "dict/*",
         "popup.css",
-        "jszip.min.js"
+        "jszip.min.js",
+        "libarchive.js",
+        "libarchive.wasm",
+        "worker-bundle.js"
       ],
       "matches": [
         "<all_urls>"
