@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const defaultSettings = {
         offset: 0,
+        rate: 1.0,
         position: 5,
         fontSize: 2.5,
         enableFurigana: false,
@@ -428,8 +429,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function getSettingsFromPanel() {
+        const rateInput = document.getElementById('rate-input');
         return {
             offset: parseFloat(offsetInput.value) || 0,
+            rate: parseFloat(rateInput.value) || 1.0,
             position: parseFloat(positionInput.value) || 5,
             fontSize: parseFloat(fontsizeInput.value) || 2.5,
             enableFurigana: furiganaToggle.checked,
@@ -485,7 +488,10 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE, DICTIONARY_PROVIDER_KEY, TARGET_LANGUAGE_KEY], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
             const currentSettings = { ...defaultSettings, ...savedSettings };
+            const rateInput = document.getElementById('rate-input');
+
             offsetInput.value = currentSettings.offset.toFixed(1);
+            if (rateInput) rateInput.value = (currentSettings.rate || 1.0).toFixed(4);
             positionInput.value = currentSettings.position.toFixed(0);
             fontsizeInput.value = currentSettings.fontSize.toFixed(1);
             furiganaToggle.checked = currentSettings.enableFurigana;
@@ -853,8 +859,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const entry = e.target.closest('.transcript-entry');
         if (entry && entry.dataset.startTime) {
             const originalStartTime = parseFloat(entry.dataset.startTime);
-            const offset = parseFloat(offsetInput.value) || 0;
-            let seekTime = originalStartTime + offset;
+            const settings = getSettingsFromPanel();
+            let seekTime = (originalStartTime / settings.rate) + settings.offset;
             if (seekTime < 0) seekTime = 0;
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs[0] && tabs[0].id) {
@@ -886,6 +892,11 @@ document.addEventListener('DOMContentLoaded', function() {
             applySettingsFromPanel(false);
         });
     });
+
+    const rateInput = document.getElementById('rate-input');
+    if(rateInput) {
+        rateInput.addEventListener('change', () => applySettingsFromPanel(false));
+    }
 
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (request.action === 'searchResults') {

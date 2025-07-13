@@ -167,6 +167,7 @@ window.addEventListener('load', function() {
                         
                         const cleanedCaptions = captions.map(caption => {
                             caption.text = caption.text.replace(/{[^}]+}/g, '');
+                            caption.text = caption.text.replace(/<[^>]*>/g, '');
                             caption.text = caption.text.replace(/\\N/g, '\n');
                             return caption;
                         });

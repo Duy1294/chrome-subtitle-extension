@@ -25,6 +25,7 @@ const defaultSettings = {
     textColor: '#FFFFFF',
     radiantEnabled: false,
     radiantSpeed: 5,
+    rate: 1.0,
 };
 let observer = null;
 let dictionaryIsEnabled = false;
@@ -523,7 +524,7 @@ function timeToSeconds(timeStr) {
 }
 
 async function parseSrt(srtText, options = {}) {
-    const { offset = 0, useFurigana = false, useDictionary = false, language = 'japanese' } = options;
+    const { offset = 0, rate = 1.0, useFurigana = false, useDictionary = false, language = 'japanese' } = options;
     const subtitles = [];
     if (!srtText) return subtitles;
     const cleanedText = srtText.replace(/&[a-z]+;/gi, '').replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '');
@@ -533,8 +534,8 @@ async function parseSrt(srtText, options = {}) {
         if (lines.length >= 2) {
             const timeMatch = lines[1] ? lines[1].match(/(.+?)\s*-->\s*(.+)/) : null;
             if (timeMatch) {
-                const startTime = Math.max(0, timeToSeconds(timeMatch[1].trim()) + offset);
-                const endTime = Math.max(0, timeToSeconds(timeMatch[2].trim()) + offset);
+                const startTime = Math.max(0, (timeToSeconds(timeMatch[1].trim()) / rate) + offset);
+                const endTime = Math.max(0, (timeToSeconds(timeMatch[2].trim()) / rate) + offset);
                 if (endTime > startTime) {
                     let textContent = lines.slice(2).join('<br>');
                     const originalLines = textContent.split('<br>');
@@ -565,9 +566,11 @@ async function parseSrt(srtText, options = {}) {
     return subtitles;
 }
 
+
 async function parseAndDisplaySubtitles(data, format, settings) {
     const parseOptions = {
         offset: settings.offset || 0,
+        rate: settings.rate || 1.0,
         useFurigana: settings.enableFurigana || false,
         useDictionary: settings.enableDictionary || false,
         language: settings.language || 'japanese'
