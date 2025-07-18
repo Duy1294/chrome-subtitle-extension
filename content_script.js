@@ -439,7 +439,7 @@ function updateSubtitleAppearance() {
                 const maxSpeed = lastSettings.radiantSpeed || 10;
                 const randomSpeed = Math.random() * (maxSpeed - 1) + 1;
                 setAnimationDuration(randomSpeed);
-            }, 500); // Change speed every 500ms
+            }, 1000);
         } else {
             switch (lastSettings.radiantMode) {
                 case 'pulse':
