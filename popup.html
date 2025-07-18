@@ -184,11 +184,30 @@
           <label class="checkbox-label" style="margin-top: 10px;">
               <input type="checkbox" id="radiant-toggle"> Enable Radiant Effect
           </label>
-          <div id="radiant-speed-row" class="setting-row" style="display: none;">
-            <label for="radiant-speed-slider">Radiant Speed</label>
-            <div class="slider-wrapper">
-                <input type="range" id="radiant-speed-slider" min="1" max="10" value="5" step="1">
-                <span id="radiant-speed-value">5</span>
+          <div id="radiant-controls-row" class="setting-group" style="display: none;">
+             <div class="setting-row">
+                <label for="radiant-mode-select">Radiant Mode</label>
+                <div class="custom-select-wrapper">
+                  <div id="radiant-mode-select" class="custom-select">
+                    <div class="custom-select-trigger"><span>Stable</span></div>
+                    <div class="custom-options">
+                      <div class="custom-option" data-value="stable"><span>Stable</span></div>
+                      <div class="custom-option" data-value="pulse"><span>Pulse</span></div>
+                      <div class="custom-option" data-value="pulseFast"><span>Pulse Fast</span></div>
+                    </div>
+                  </div>
+                </div>
+            </div>
+            <div class="setting-row">
+              <label id="radiant-speed-label" for="radiant-speed-slider">Speed</label>
+              <div class="slider-wrapper">
+                  <input type="range" id="radiant-speed-slider" min="1" max="10" value="5" step="1">
+                  <span id="radiant-speed-value">5</span>
+              </div>
+            </div>
+            <div class="setting-row">
+                <label for="radiant-random-toggle">Random Speed</label>
+                <button id="radiant-random-toggle" class="action-btn">Turn On</button>
             </div>
           </div>
         </div>

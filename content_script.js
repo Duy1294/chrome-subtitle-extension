@@ -10,6 +10,10 @@ let isDragging = false;
 let initialMouseY = 0;
 let initialBottomPercent = 0;
 let userDefinedBottom = '5%';
+// --- START: New variable for radiant effect ---
+let radiantIntervalId = null;
+// --- END: New variable for radiant effect ---
+
 
 const SETTINGS_KEY = 'subtitleUserSettings';
 const defaultSettings = {
@@ -25,6 +29,8 @@ const defaultSettings = {
     textColor: '#FFFFFF',
     radiantEnabled: false,
     radiantSpeed: 5,
+    radiantMode: 'stable',
+    radiantRandomEnabled: false,
     rate: 1.0,
 };
 let observer = null;
@@ -353,6 +359,14 @@ function onDragEnd(e) {
 function updateSubtitleAppearance() {
     if (!subtitleContainer || !lastSettings) return;
 
+    // --- START: Radiant Effect Logic Update ---
+    // ALWAYS clear any previous interval when settings change
+    if (radiantIntervalId) {
+        clearInterval(radiantIntervalId);
+        radiantIntervalId = null;
+    }
+    // --- END: Radiant Effect Logic Update ---
+
     subtitleContainer.style.top = '';
     subtitleContainer.style.bottom = '';
 
@@ -406,16 +420,48 @@ function updateSubtitleAppearance() {
     subtitleContainer.style.animation = '';
 
 
+    // --- START: New Radiant Effect implementation ---
+    const setAnimationDuration = (speed) => {
+        const duration = Math.max(5.5 - (speed * 0.5), 0.1);
+        subtitleContainer.style.animationDuration = `${duration}s`;
+    };
+
     if (lastSettings.radiantEnabled) {
         subtitleContainer.classList.add('radiant-text');
         subtitleContainer.style.textShadow = 'none';
-        
-        const speedLevel = lastSettings.radiantSpeed || 5;
-        const duration = (5.5 - (speedLevel * 0.5));
-        const finalDuration = Math.max(duration, 0.1);
-        
-        subtitleContainer.style.animation = `radiant-background-scroll ${finalDuration}s linear infinite alternate`;
+        subtitleContainer.style.animationName = 'radiant-background-scroll';
+        subtitleContainer.style.animationTimingFunction = 'linear';
+        subtitleContainer.style.animationIterationCount = 'infinite';
+        subtitleContainer.style.animationDirection = 'alternate';
 
+        if (lastSettings.radiantRandomEnabled) {
+            radiantIntervalId = setInterval(() => {
+                const maxSpeed = lastSettings.radiantSpeed || 10;
+                const randomSpeed = Math.random() * (maxSpeed - 1) + 1;
+                setAnimationDuration(randomSpeed);
+            }, 500); // Change speed every 500ms
+        } else {
+            switch (lastSettings.radiantMode) {
+                case 'pulse':
+                case 'pulseFast':
+                    let angle = 0;
+                    const speed = lastSettings.radiantSpeed || 5;
+                    const pulseFrequency = lastSettings.radiantMode === 'pulseFast' ? 0.05 : 0.02;
+                    
+                    radiantIntervalId = setInterval(() => {
+                        angle += pulseFrequency;
+                        const sinValue = Math.sin(angle); // -1 to 1
+                        const normalizedSin = (sinValue + 1) / 2; // 0 to 1
+                        const pulsatingSpeed = 1 + (normalizedSin * (speed - 1)); // From 1 to selected speed
+                        setAnimationDuration(pulsatingSpeed);
+                    }, 50); // Update every 50ms for smooth pulse
+                    break;
+                case 'stable':
+                default:
+                    setAnimationDuration(lastSettings.radiantSpeed);
+                    break;
+            }
+        }
     } else {
         subtitleContainer.style.color = lastSettings.textColor || '#FFFFFF';
         if (lastSettings.backgroundStyle !== 'panel') {
@@ -424,6 +470,7 @@ function updateSubtitleAppearance() {
             subtitleContainer.style.textShadow = 'none';
         }
     }
+    // --- END: New Radiant Effect implementation ---
 }
 
 function cleanup(preserveState = false) {
@@ -434,6 +481,10 @@ function cleanup(preserveState = false) {
     }
     if (subtitleContainer && subtitleContainer.parentElement) {
         subtitleContainer.remove();
+    }
+    if (radiantIntervalId) {
+        clearInterval(radiantIntervalId);
+        radiantIntervalId = null;
     }
     videoElement = null;
     subtitleContainer = null;

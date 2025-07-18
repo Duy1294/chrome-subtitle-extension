@@ -46,10 +46,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const exportVocabBtn = document.getElementById('export-vocab-btn');
     const textColorInput = document.getElementById('text-color-input');
     const colorPickerInput = document.getElementById('color-picker-input');
+    // --- START: Radiant Effect new controls ---
     const radiantToggle = document.getElementById('radiant-toggle');
-    const radiantSpeedRow = document.getElementById('radiant-speed-row');
+    const radiantControlsRow = document.getElementById('radiant-controls-row');
+    const radiantModeSelect = document.getElementById('radiant-mode-select');
     const radiantSpeedSlider = document.getElementById('radiant-speed-slider');
     const radiantSpeedValue = document.getElementById('radiant-speed-value');
+    const radiantSpeedLabel = document.getElementById('radiant-speed-label');
+    const radiantRandomToggle = document.getElementById('radiant-random-toggle');
+    // --- END: Radiant Effect new controls ---
 
     const DEEPL_KEY_STORAGE = 'deepl_api_key';
     const DICTIONARY_PROVIDER_KEY = 'dictionaryProviderSettings';
@@ -81,6 +86,8 @@ document.addEventListener('DOMContentLoaded', function() {
         textColor: '#FFFFFF',
         radiantEnabled: false,
         radiantSpeed: 5,
+        radiantMode: 'stable', // new
+        radiantRandomEnabled: false, // new
         dictionaryProvider: {
             japanese: 'jisho',
             german: 'deepl',
@@ -144,10 +151,49 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-
-    function toggleRadiantSpeedSlider() {
-        radiantSpeedRow.style.display = radiantToggle.checked ? 'flex' : 'none';
+    
+    // --- START: Radiant Effect UI Logic ---
+    function toggleRadiantControls() {
+        radiantControlsRow.style.display = radiantToggle.checked ? 'block' : 'none';
     }
+
+    function updateRadiantSpeedLabel() {
+        const mode = radiantModeSelect.dataset.value;
+        const isRandom = radiantRandomToggle.classList.contains('active');
+
+        if (isRandom) {
+            radiantSpeedLabel.textContent = 'Max Speed';
+        } else if (mode === 'stable') {
+            radiantSpeedLabel.textContent = 'Speed';
+        } else {
+            radiantSpeedLabel.textContent = 'Intensity';
+        }
+    }
+    
+    radiantToggle.addEventListener('change', () => {
+        toggleRadiantControls();
+        applySettingsFromPanel(false);
+    });
+
+    radiantModeSelect.addEventListener('change', () => {
+        updateRadiantSpeedLabel();
+        applySettingsFromPanel(false);
+    });
+
+    radiantRandomToggle.addEventListener('click', () => {
+        radiantRandomToggle.classList.toggle('active');
+        if (radiantRandomToggle.classList.contains('active')) {
+            radiantRandomToggle.textContent = 'Turn Off';
+            radiantRandomToggle.style.backgroundColor = 'var(--danger-color)';
+        } else {
+            radiantRandomToggle.textContent = 'Turn On';
+            radiantRandomToggle.style.backgroundColor = 'var(--success-color)';
+        }
+        updateRadiantSpeedLabel();
+        applySettingsFromPanel(false);
+    });
+    // --- END: Radiant Effect UI Logic ---
+
 
     deeplApiKeyInput.addEventListener('change', () => {
         const key = deeplApiKeyInput.value.trim();
@@ -185,11 +231,6 @@ document.addEventListener('DOMContentLoaded', function() {
             colorPickerInput.value = value;
             applySettingsFromPanel(false);
         }
-    });
-
-    radiantToggle.addEventListener('change', () => {
-        toggleRadiantSpeedSlider();
-        applySettingsFromPanel(false);
     });
     
     radiantSpeedSlider.addEventListener('input', () => {
@@ -446,6 +487,8 @@ document.addEventListener('DOMContentLoaded', function() {
             textColor: textColorInput.value,
             radiantEnabled: radiantToggle.checked,
             radiantSpeed: parseInt(radiantSpeedSlider.value, 10) || 5,
+            radiantMode: radiantModeSelect.dataset.value || 'stable', // new
+            radiantRandomEnabled: radiantRandomToggle.classList.contains('active'), // new
         };
     }
 
@@ -504,14 +547,29 @@ document.addEventListener('DOMContentLoaded', function() {
             setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
             setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
             
+            // --- START: Radiant Effect settings loading ---
             radiantToggle.checked = currentSettings.radiantEnabled;
             textColorInput.value = currentSettings.textColor;
             colorPickerInput.value = currentSettings.textColor;
             radiantSpeedSlider.value = currentSettings.radiantSpeed;
             radiantSpeedValue.textContent = currentSettings.radiantSpeed;
+            setCustomSelectValue(radiantModeSelect, currentSettings.radiantMode);
+
+            if (currentSettings.radiantRandomEnabled) {
+                radiantRandomToggle.classList.add('active');
+                radiantRandomToggle.textContent = 'Turn Off';
+                radiantRandomToggle.style.backgroundColor = 'var(--danger-color)';
+            } else {
+                radiantRandomToggle.classList.remove('active');
+                radiantRandomToggle.textContent = 'Turn On';
+                radiantRandomToggle.style.backgroundColor = 'var(--success-color)';
+            }
             
             togglePanelSettings();
-            toggleRadiantSpeedSlider();
+            toggleRadiantControls();
+            updateRadiantSpeedLabel();
+            // --- END: Radiant Effect settings loading ---
+
             updateDictionaryProviderOptions();
 
             const savedSources = result[SELECTED_SOURCES_KEY];
