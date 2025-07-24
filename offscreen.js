@@ -231,7 +231,7 @@ window.addEventListener('load', function() {
                         } else {
                             throw new Error('No subtitle file (.srt, .ass, .vtt) found in zip.');
                         }
-                    } else if (format === 'rar') {
+                    } else if (format === 'rar' || format === '7z') {
                         await Archive.init({
                             workerUrl: 'worker-bundle.js'
                         });
@@ -239,7 +239,7 @@ window.addEventListener('load', function() {
                         const response = await fetch(url);
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         const blob = await response.blob();
-                        const file = new File([blob], "subtitle.rar");
+                        const file = new File([blob], `subtitle.${format}`);
 
                         const archive = await Archive.open(file);
                         const extractedFiles = await archive.extractFiles();
@@ -261,7 +261,7 @@ window.addEventListener('load', function() {
                             const text = await decodeWithFallback(fileBuffer);
                             processSubtitleContent(text);
                         } else {
-                            throw new Error('No subtitle file (.srt, .ass, .vtt) found in rar archive.');
+                            throw new Error(`No subtitle file (.srt, .ass, .vtt) found in ${format} archive.`);
                         }
                     } else {
                         const text = await fetchAndDecode(url);

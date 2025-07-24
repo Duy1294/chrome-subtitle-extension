@@ -722,6 +722,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 format = 'zip';
             } else if (url.includes('.rar')) {
                 format = 'rar';
+            } else if (url.includes('.7z')) {
+                format = '7z';
             }
         }
         
