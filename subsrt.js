@@ -1,5 +1,3 @@
-// subsrt.js - PHIÊN BẢN ĐÃ SỬA LỖI TẬN GỐC
-
 (function (global) {
   var factory = function() {
     return /******/ (function(modules) { // webpackBootstrap
@@ -94,7 +92,6 @@
 
     "use strict";
 
-
     var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
 
     var formats = __webpack_require__(1);
@@ -105,12 +102,23 @@
       return Object.keys(formats);
     };
 
+    function stripBOM(content) {
+      if (typeof content === 'string' && content.charCodeAt(0) === 0xFEFF) {
+        return content.slice(1);
+      }
+      return content;
+    }
+
     subsrt.parse = function (content) {
       var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
+      // Apply BOM stripping before detection and parsing
+      content = stripBOM(content);
+
+      // Use subsrt.detect to determine the format
       var format = subsrt.detect(content, options);
       if (!format) {
-        var E = Error; 
+        var E = Error;
         throw new E('Unsupported subtitle format');
       }
       var captions = formats[format].parse(content, options);
@@ -120,7 +128,7 @@
     subsrt.build = function (captions) {
       var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
-      var format = options.format || 'srt';
+      var format = options.format || 'srt'; // Default to srt for building if not specified
       if (Object.keys(formats).indexOf(format) < 0) {
         var E = Error; 
         throw new E('Unsupported subtitle format ' + format);
@@ -133,11 +141,30 @@
       var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
       var format = '';
-      for (var key in formats) {
-        if (formats[key].detect(content, options)) {
-          format = key;
-          break;
+      // Prioritize detection by explicit format or extension in options
+      if (options.format && formats[options.format.toLowerCase()]) {
+        format = options.format.toLowerCase();
+      } else if (options.extension && formats[options.extension.toLowerCase()]) {
+        format = options.extension.toLowerCase();
+      } else {
+        // Fallback: Use content-based detection with explicit order
+        var formatOrder = ['srt', 'vtt', 'ass', 'ssa', 'sub']; // Explicit order: SRT first
+        for (var i = 0; i < formatOrder.length; i++) {
+          var key = formatOrder[i];
+          if (formats[key].detect && formats[key].detect(content, options)) {
+            format = key;
+            break;
+          }
         }
+        // If no format detected and extension is provided, use extension as fallback
+        if (!format && options.extension && formats[options.extension.toLowerCase()]) {
+          format = options.extension.toLowerCase();
+          console.warn('Content-based detection failed, falling back to extension: ' + format);
+        }
+      }
+      if (!format) {
+        console.warn('Could not detect subtitle format, falling back to "srt"');
+        format = 'srt'; // Ultimate fallback
       }
       return format;
     };
@@ -204,7 +231,6 @@
 
     "use strict";
 
-
     module.exports = {
       ass: __webpack_require__(2),
       ssa: __webpack_require__(2),
@@ -218,7 +244,6 @@
     /***/ (function(module, exports, __webpack_require__) {
 
     "use strict";
-
 
     var _helper = __webpack_require__(3);
 
@@ -234,7 +259,7 @@
       var captions = [];
       var lines = content.split(/(?:\r\n|\r|\n)/gm);
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
+        var line = lines[i].trim();
         var m = line.match(re);
         if (m) {
           var caption = {};
@@ -242,19 +267,12 @@
           caption.start = helper.toMilliseconds(m[3]);
           caption.end = helper.toMilliseconds(m[4]);
           caption.style = m[5].trim();
-          
-          // ----- BẮT ĐẦU THAY ĐỔI -----
-          // Lấy text gốc
           var rawText = m[10].trim();
-          // Dọn dẹp dấu phẩy ở đầu và chuyển \N thành \n
           caption.text = rawText.replace(/^,/, '').replace(/\\N/g, '\n').trim();
-          // ----- KẾT THÚC THAY ĐỔI -----
-
           if (options.verbose) {
             caption.dialogue = m[1] === 'Dialogue';
             caption.comment = m[1] === 'Comment';
             caption.layer = m[2];
-            caption.style = m[5];
             caption.name = m[6];
             caption.marginl = m[7];
             caption.marginr = m[8];
@@ -270,7 +288,6 @@
       var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
 
       var content = '';
-
       if (options.format === 'ass') {
         content += '[Script Info]\n';
         content += 'Title: Default Aegisub file\n';
@@ -287,9 +304,7 @@
         content += '\n';
         content += '[Events]\n';
         content += 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
-      }
-
-      if (options.format === 'ssa') {
+      } else if (options.format === 'ssa') {
         content += '[Script Info]\n';
         content += 'Title: Default Aegisub file\n';
         content += 'ScriptType: v4.00\n';
@@ -310,16 +325,12 @@
       for (var i = 0; i < captions.length; i++) {
         var caption = captions[i];
         if (caption.type === 'caption') {
-          content += 'Dialogue: 0,';
-          content += helper.toTimeString(caption.start) + ',';
-          content += helper.toTimeString(caption.end) + ',';
-          content += caption.style || 'Default';
-          content += ',,0,0,0,,';
+          content += (options.format === 'ass' ? 'Dialogue: 0,' : 'Dialogue: ') + helper.toTimeString(caption.start) + ',' + helper.toTimeString(caption.end) + ',';
+          content += caption.style || 'Default' + ',,0,0,0,,';
           content += caption.text.replace(/\r\n|\r|\n/g, '\\N');
           content += '\r\n';
         }
       }
-
       return content;
     };
 
@@ -342,21 +353,27 @@
 
     "use strict";
 
+    function toHalfWidth(str) {
+      return str.replace(/[０-９]/g, function(c) {
+        return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+      });
+    }
 
     var toMilliseconds = function toMilliseconds(s) {
       if (typeof s !== 'string') {
         return 0;
       }
-      var re = /(\d+):(\d+):(\d+)(?:[.,](\d+))?/;
-      var m = re.exec(s);
-      if (m) {
-        var hh = parseInt(m[1], 10) * 3600000;
-        var mm = parseInt(m[2], 10) * 60000;
-        var ss = parseInt(m[3], 10) * 1000;
-        var ff = m[4] ? parseInt((m[4] + '00').substr(0, 3), 10) : 0;
-        return hh + mm + ss + ff;
-      }
-      return 0;
+      const digit = '[\\d０-９]';
+      const colon = '[:：]';
+      const commaDot = '[,.，．]';
+      const re = new RegExp(`(${digit}+)${colon}(${digit}+)${colon}(${digit}+)(?:${commaDot}(${digit}+))?`);
+      const m = re.exec(s);
+      if (!m) return 0;
+      const hh = parseInt(toHalfWidth(m[1]), 10) * 3600000;
+      const mm = parseInt(toHalfWidth(m[2]), 10) * 60000;
+      const ss = parseInt(toHalfWidth(m[3]), 10) * 1000;
+      const ff = m[4] ? parseInt((toHalfWidth(m[4]) + '00').substr(0, 3), 10) : 0;
+      return hh + mm + ss + ff;
     };
 
     var toTimeString = function toTimeString(ms) {
@@ -390,7 +407,6 @@
 
     "use strict";
 
-
     var re = /{([^}]*)}{([^}]*)} *(.*)/;
 
     var parse = function parse(content, options) {
@@ -400,7 +416,7 @@
       }
       var lines = content.split(/\r\n|\r|\n/);
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
+        var line = lines[i].trim();
         var m = line.match(re);
         if (m) {
           var caption = {};
@@ -440,8 +456,7 @@
       if (typeof content !== 'string') {
         return false;
       }
-      return (/^\{\d+\}\{\d+\}/.test(content)
-      );
+      return (/^\{\d+\}\{\d+\}/.test(content));
     };
 
     module.exports = {
@@ -455,7 +470,6 @@
     /***/ (function(module, exports, __webpack_require__) {
 
     "use strict";
-
 
     var _helper = __webpack_require__(3);
 
@@ -478,7 +492,7 @@
       var caption = {};
       var index = 0;
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
+        var line = lines[i].trim();
         switch (state) {
           case S_INDEX:
             {
@@ -494,41 +508,62 @@
             }
           case S_TIMESTAMP:
             {
-              var m = line.match(/(\d+:\d+:\d+[,.]\d+) --> (\d+:\d+:\d+[,.]\d+)/);
+              const digit = '[\\d０-９]';
+              const colon = '[:：]';
+              const commaDot = '[,.，．]';
+              const timeRegex = new RegExp(`\\s*(${digit}{1,2}${colon}${digit}{1,2}${colon}${digit}{1,2}${commaDot}${digit}{1,3})\\s*-->\\s*(${digit}{1,2}${colon}${digit}{1,2}${colon}${digit}{1,2}${commaDot}${digit}{1,3})\\s*`);
+              var m = line.match(timeRegex);
               if (m) {
-                caption.start = helper.toMilliseconds(m[1]);
-                caption.end = helper.toMilliseconds(m[2]);
-                if (options.verbose) {
-                  caption.startTime = m[1];
-                  caption.endTime = m[2];
+                const startTime = helper.toMilliseconds(m[1]);
+                const endTime = helper.toMilliseconds(m[2]);
+                if (startTime >= 0 && endTime >= 0 && endTime >= startTime) {
+                  caption.start = startTime;
+                  caption.end = endTime;
+                  if (options.verbose) {
+                    caption.startTime = m[1];
+                    caption.endTime = m[2];
+                  }
+                  state = S_TEXT;
+                } else {
+                  console.warn('Invalid SRT timestamp at line ' + (i + 1) + ': ' + line);
+                  state = S_INDEX; // Skip invalid timestamp
                 }
-                state = S_TEXT;
               } else {
-                state = S_INDEX;
+                console.warn('Skipping invalid SRT timestamp line ' + (i + 1) + ': ' + line);
+                state = S_INDEX; // Reset if timestamp is invalid
               }
               break;
             }
           case S_TEXT:
             {
-              if (line.trim().length > 0) {
-                if (caption.text) {
-                  caption.text += '\n' + line;
-                } else {
-                  caption.text = line;
+              if (line.length > 0) {
+                let textLine = line;
+                let speakerMatch = textLine.match(/^\s*(\(\([^)]*\)\)|(\([^)]*\)))?/);
+                if (speakerMatch && speakerMatch[0]) {
+                  caption.speaker = speakerMatch[0].trim();
+                  textLine = textLine.replace(speakerMatch[0], '').trim();
+                }
+                if (textLine) {
+                  if (caption.text) {
+                    caption.text += '\n' + textLine;
+                  } else {
+                    caption.text = textLine;
+                  }
                 }
               } else {
-                captions.push(caption);
+                if (caption.text || caption.speaker) {
+                  captions.push(caption);
+                }
+                caption = {};
                 state = S_INDEX;
               }
               break;
             }
         }
       }
-
-      if (state === S_TEXT) {
+      if (state === S_TEXT && (caption.text || caption.speaker)) {
         captions.push(caption);
       }
-
       return captions;
     };
 
@@ -546,7 +581,10 @@
           content += '\r\n';
           content += helper.toTimeString(caption.start).replace('.', ',') + ' --> ' + helper.toTimeString(caption.end).replace('.', ',');
           content += '\r\n';
-          content += caption.text;
+          if (caption.speaker) {
+            content += caption.speaker + ' ';
+          }
+          content += caption.text || '';
           content += '\r\n\r\n';
         }
       }
@@ -557,8 +595,7 @@
       if (typeof content !== 'string') {
         return false;
       }
-      return (/(?:\r\n|\r|\n)\d{1,2}:\d{1,2}:\d{1,2}[,.]\d{1,3} --> \d{1,2}:\d{1,2}:\d{1,2}[,.]\d{1,3}(?:\r\n|\r|\n)/.test(content)
-      );
+      return (/(?:\r\n|\r|\n|^)\s*\d{1,2}:\d{1,2}:\d{1,2}[,.]\d{1,3}\s*-->\s*\d{1,2}:\d{1,2}:\d{1,2}[,.]\d{1,3}\s*(?:\r\n|\r|\n|$)/.test(content));
     };
 
     module.exports = {
@@ -572,7 +609,6 @@
     /***/ (function(module, exports, __webpack_require__) {
 
     "use strict";
-
 
     var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
 
@@ -597,7 +633,7 @@
       var state = S_HEADER;
       var caption = {};
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
+        var line = lines[i].trim();
         switch (state) {
           case S_HEADER:
             {
@@ -612,35 +648,50 @@
             }
           case S_ID:
             {
-              if (line.trim().length === 0) {
+              if (line.length === 0) {
                 continue;
               }
               caption = {
                 type: 'caption',
-                index: lines[i]
+                index: line
               };
               state = S_TIMESTAMP;
               break;
             }
           case S_TIMESTAMP:
             {
-              var m = line.match(/(\d*:?\d+:\d+.\d+) --> (\d*:?\d+:\d+.\d+)/);
+              const digit = '[\\d０-９]';
+              const colon = '[:：]';
+              const commaDot = '[,.，．]';
+              const timeRegex = new RegExp(`\\s*(${digit}*${colon}${digit}{2}${colon}${digit}{2}${commaDot}${digit}+)\\s*-->\\s*(${digit}*${colon}${digit}{2}${colon}${digit}{2}${commaDot}${digit}+)\\s*(.*)`);
+              var m = line.match(timeRegex);
               if (m) {
-                caption.start = helper.toMilliseconds(m[1]);
-                caption.end = helper.toMilliseconds(m[2]);
-                if (options.verbose) {
-                  caption.startTime = m[1];
-                  caption.endTime = m[2];
+                const startTime = helper.toMilliseconds(m[1]);
+                const endTime = helper.toMilliseconds(m[2]);
+                if (startTime >= 0 && endTime >= 0 && endTime >= startTime) {
+                  caption.start = startTime;
+                  caption.end = endTime;
+                  if (options.verbose) {
+                    caption.startTime = m[1];
+                    caption.endTime = m[2];
+                    if (m[3] && m[3].trim().length > 0) {
+                      caption.settings = m[3].trim();
+                    }
+                  }
+                  state = S_TEXT;
+                } else {
+                  console.warn('Invalid VTT timestamp at line ' + (i + 1) + ': ' + line);
+                  state = S_ID;
                 }
-                state = S_TEXT;
               } else {
+                console.warn('Skipping invalid VTT timestamp line ' + (i + 1) + ': ' + line);
                 state = S_ID;
               }
               break;
             }
           case S_TEXT:
             {
-              if (line.trim().length > 0) {
+              if (line.length > 0) {
                 if (caption.text) {
                   caption.text += '\n' + line;
                 } else {
@@ -655,7 +706,7 @@
         }
       }
 
-      if (state === S_TEXT) {
+      if (state === S_TEXT && (caption.text || caption.speaker)) {
         captions.push(caption);
       }
 
@@ -684,8 +735,11 @@
             content += '\r\n';
           }
           content += helper.toTimeString(caption.start).replace(',', '.') + ' --> ' + helper.toTimeString(caption.end).replace(',', '.');
+          if (options.verbose && caption.settings) {
+            content += ' ' + caption.settings;
+          }
           content += '\r\n';
-          content += caption.text;
+          content += caption.text || '';
           content += '\r\n\r\n';
         } else if (caption.type === 'style' && options.verbose) {
           content += 'STYLE';
@@ -706,8 +760,7 @@
       if (typeof content !== 'string') {
         return false;
       }
-      return (/^WEBVTT/.test(content)
-      );
+      return (/^WEBVTT/.test(content));
     };
 
     module.exports = {
