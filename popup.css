@@ -582,3 +582,36 @@ main {
   font-weight: bold;
   color: var(--accent-color);
 }
+
+.profile-input {
+    flex-basis: 55%;
+    background-color: var(--bg-lighter);
+    border: 1px solid var(--border-color);
+    color: white;
+    padding: 6px;
+    border-radius: 4px;
+}
+
+#profile-select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.profile-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 5px;
+}
+
+.profile-actions .action-btn {
+    padding: 5px 15px;
+}
+
+.action-btn.success-btn {
+    background-color: var(--success-color);
+    border: none;
+}
+.action-btn.success-btn:hover {
+    background-color: #84b365;
+}

@@ -46,7 +46,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const exportVocabBtn = document.getElementById('export-vocab-btn');
     const textColorInput = document.getElementById('text-color-input');
     const colorPickerInput = document.getElementById('color-picker-input');
-    // --- START: Radiant Effect new controls ---
     const radiantToggle = document.getElementById('radiant-toggle');
     const radiantControlsRow = document.getElementById('radiant-controls-row');
     const radiantModeSelect = document.getElementById('radiant-mode-select');
@@ -54,7 +53,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const radiantSpeedValue = document.getElementById('radiant-speed-value');
     const radiantSpeedLabel = document.getElementById('radiant-speed-label');
     const radiantRandomToggle = document.getElementById('radiant-random-toggle');
-    // --- END: Radiant Effect new controls ---
+    const profileSelect = document.getElementById('profile-select');
+    const profileNameInput = document.getElementById('profile-name-input');
+    const loadProfileBtn = document.getElementById('load-profile-btn');
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+    const deleteProfileBtn = document.getElementById('delete-profile-btn');
 
     const DEEPL_KEY_STORAGE = 'deepl_api_key';
     const DICTIONARY_PROVIDER_KEY = 'dictionaryProviderSettings';
@@ -69,6 +72,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const LAST_SEARCH_TIME_KEY = 'lastSearchTimestamp';
     const SEARCH_COOLDOWN = 5000;
     const VOCAB_LIST_KEY = 'userVocabularyList';
+    const PROFILES_KEY = 'subtitleSettingProfiles';
+    const ACTIVE_PROFILE_KEY = 'activeSubtitleProfile';
 
     const defaultSettings = {
         offset: 0,
@@ -86,8 +91,8 @@ document.addEventListener('DOMContentLoaded', function() {
         textColor: '#FFFFFF',
         radiantEnabled: false,
         radiantSpeed: 5,
-        radiantMode: 'stable', // new
-        radiantRandomEnabled: false, // new
+        radiantMode: 'stable',
+        radiantRandomEnabled: false,
         dictionaryProvider: {
             japanese: 'jisho',
             german: 'deepl',
@@ -152,7 +157,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // --- START: Radiant Effect UI Logic ---
     function toggleRadiantControls() {
         radiantControlsRow.style.display = radiantToggle.checked ? 'block' : 'none';
     }
@@ -192,8 +196,6 @@ document.addEventListener('DOMContentLoaded', function() {
         updateRadiantSpeedLabel();
         applySettingsFromPanel(false);
     });
-    // --- END: Radiant Effect UI Logic ---
-
 
     deeplApiKeyInput.addEventListener('change', () => {
         const key = deeplApiKeyInput.value.trim();
@@ -487,9 +489,57 @@ document.addEventListener('DOMContentLoaded', function() {
             textColor: textColorInput.value,
             radiantEnabled: radiantToggle.checked,
             radiantSpeed: parseInt(radiantSpeedSlider.value, 10) || 5,
-            radiantMode: radiantModeSelect.dataset.value || 'stable', // new
-            radiantRandomEnabled: radiantRandomToggle.classList.contains('active'), // new
+            radiantMode: radiantModeSelect.dataset.value || 'stable',
+            radiantRandomEnabled: radiantRandomToggle.classList.contains('active'),
         };
+    }
+
+    function applySettingsToPanel(settings) {
+        const settingsToApply = { ...defaultSettings, ...settings };
+        const rateInput = document.getElementById('rate-input');
+
+        offsetInput.value = settingsToApply.offset.toFixed(1);
+        if (rateInput) rateInput.value = (settingsToApply.rate || 1.0).toFixed(4);
+        positionInput.value = settingsToApply.position.toFixed(0);
+        fontsizeInput.value = settingsToApply.fontSize.toFixed(1);
+        furiganaToggle.checked = settingsToApply.enableFurigana;
+        dictionaryToggle.checked = settingsToApply.enableDictionary;
+        moveOnPauseToggle.checked = settingsToApply.moveOnPause;
+        panelWidthInput.value = settingsToApply.panelWidth;
+        panelHeightInput.value = settingsToApply.panelHeight;
+        textColorInput.value = settingsToApply.textColor;
+        colorPickerInput.value = settingsToApply.textColor;
+
+        setCustomSelectValue(languageSelect, settingsToApply.language);
+        setCustomSelectValue(targetLanguageSelect, settingsToApply.targetLanguage);
+        setCustomSelectValue(backgroundStyleSelect, settingsToApply.backgroundStyle);
+
+        radiantToggle.checked = settingsToApply.radiantEnabled;
+        radiantSpeedSlider.value = settingsToApply.radiantSpeed;
+        radiantSpeedValue.textContent = settingsToApply.radiantSpeed;
+        setCustomSelectValue(radiantModeSelect, settingsToApply.radiantMode);
+
+        if (settingsToApply.radiantRandomEnabled) {
+            radiantRandomToggle.classList.add('active');
+            radiantRandomToggle.textContent = 'Turn Off';
+            radiantRandomToggle.style.backgroundColor = 'var(--danger-color)';
+        } else {
+            radiantRandomToggle.classList.remove('active');
+            radiantRandomToggle.textContent = 'Turn On';
+            radiantRandomToggle.style.backgroundColor = 'var(--success-color)';
+        }
+
+        togglePanelSettings();
+        toggleRadiantControls();
+        updateRadiantSpeedLabel();
+        updateDictionaryProviderOptions();
+
+        applySettingsFromPanel(false);
+        
+        applyStatus.textContent = 'Profile loaded successfully.';
+        applyStatus.className = 'status-message success';
+        applyStatus.style.display = 'block';
+        setTimeout(() => { applyStatus.style.display = 'none'; }, 2000);
     }
 
     async function applySettingsFromPanel(newDataLoaded = false) {
@@ -527,6 +577,108 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    async function loadProfilesIntoSelect() {
+        const result = await chrome.storage.local.get([PROFILES_KEY, ACTIVE_PROFILE_KEY]);
+        const profiles = result[PROFILES_KEY] || {};
+        const activeProfile = result[ACTIVE_PROFILE_KEY] || '';
+
+        profileSelect.innerHTML = '<option value="">Default Settings</option>';
+        
+        const profileNames = Object.keys(profiles).sort();
+        profileNames.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            if (name === activeProfile) {
+                option.selected = true;
+            }
+            profileSelect.appendChild(option);
+        });
+        
+        profileNameInput.value = activeProfile;
+    }
+
+    async function saveProfile() {
+        const name = profileNameInput.value.trim();
+        if (!name) {
+            alert("Please enter a profile name.");
+            return;
+        }
+
+        const currentSettings = getSettingsFromPanel();
+        const result = await chrome.storage.local.get(PROFILES_KEY);
+        const profiles = result[PROFILES_KEY] || {};
+
+        if (profiles[name]) {
+            if (!confirm(`Profile "${name}" already exists. Do you want to overwrite it?`)) {
+                return;
+            }
+        }
+
+        profiles[name] = currentSettings;
+        await chrome.storage.local.set({ [PROFILES_KEY]: profiles, [ACTIVE_PROFILE_KEY]: name });
+        
+        await loadProfilesIntoSelect();
+        
+        applyStatus.textContent = `Profile "${name}" saved.`;
+        applyStatus.className = 'status-message success';
+        applyStatus.style.display = 'block';
+        setTimeout(() => { applyStatus.style.display = 'none'; }, 2000);
+    }
+
+    async function loadProfile() {
+        const name = profileSelect.value;
+        if (!name) {
+            applySettingsToPanel(defaultSettings);
+            await chrome.storage.local.remove(ACTIVE_PROFILE_KEY);
+            profileNameInput.value = '';
+            return;
+        }
+
+        const result = await chrome.storage.local.get(PROFILES_KEY);
+        const profiles = result[PROFILES_KEY] || {};
+        const settingsToLoad = profiles[name];
+
+        if (settingsToLoad) {
+            applySettingsToPanel(settingsToLoad);
+            await chrome.storage.local.set({ [ACTIVE_PROFILE_KEY]: name });
+            profileNameInput.value = name;
+        } else {
+            alert(`Profile "${name}" not found!`);
+        }
+    }
+
+    async function deleteProfile() {
+        const name = profileSelect.value;
+        if (!name) {
+            alert("Please select a profile to delete.");
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the profile "${name}"?`)) {
+            return;
+        }
+
+        const result = await chrome.storage.local.get([PROFILES_KEY, ACTIVE_PROFILE_KEY]);
+        const profiles = result[PROFILES_KEY] || {};
+        const activeProfile = result[ACTIVE_PROFILE_KEY] || '';
+        
+        delete profiles[name];
+
+        const storageUpdate = { [PROFILES_KEY]: profiles };
+        if (activeProfile === name) {
+            storageUpdate[ACTIVE_PROFILE_KEY] = '';
+        }
+
+        await chrome.storage.local.set(storageUpdate);
+        await loadProfilesIntoSelect();
+
+        applyStatus.textContent = `Profile "${name}" deleted.`;
+        applyStatus.className = 'status-message success';
+        applyStatus.style.display = 'block';
+        setTimeout(() => { applyStatus.style.display = 'none'; }, 2000);
+    }
+
     function loadSettings() {
         chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE, DICTIONARY_PROVIDER_KEY, TARGET_LANGUAGE_KEY], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
@@ -547,7 +699,6 @@ document.addEventListener('DOMContentLoaded', function() {
             setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
             setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
             
-            // --- START: Radiant Effect settings loading ---
             radiantToggle.checked = currentSettings.radiantEnabled;
             textColorInput.value = currentSettings.textColor;
             colorPickerInput.value = currentSettings.textColor;
@@ -568,7 +719,6 @@ document.addEventListener('DOMContentLoaded', function() {
             togglePanelSettings();
             toggleRadiantControls();
             updateRadiantSpeedLabel();
-            // --- END: Radiant Effect settings loading ---
 
             updateDictionaryProviderOptions();
 
@@ -958,6 +1108,14 @@ document.addEventListener('DOMContentLoaded', function() {
         rateInput.addEventListener('change', () => applySettingsFromPanel(false));
     }
 
+    saveProfileBtn.addEventListener('click', saveProfile);
+    loadProfileBtn.addEventListener('click', loadProfile);
+    deleteProfileBtn.addEventListener('click', deleteProfile);
+
+    profileSelect.addEventListener('change', () => {
+        profileNameInput.value = profileSelect.value;
+    });
+
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (request.action === 'searchResults') {
             renderSearchResults(request.data, request.errors);
@@ -1016,6 +1174,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadSettings();
         loadSearchHistory();
         renderVocabList();
+        await loadProfilesIntoSelect();
         const subResult = await chrome.storage.session.get(SESSION_SUB_KEY);
         if (subResult[SESSION_SUB_KEY] && subResult[SESSION_SUB_KEY].data) {
             transcriptSubtitles = parseSrtForTranscript(subResult[SESSION_SUB_KEY].data);

@@ -53,6 +53,26 @@
             </div>
         </div>
         <div class="setting-group">
+            <h3>Settings Profiles</h3>
+            <div class="setting-row">
+                <label for="profile-select">Load Profile</label>
+                <div class="custom-select-wrapper">
+                  <select id="profile-select" class="profile-input">
+                      <option value="">Default Settings</option>
+                  </select>
+                </div>
+            </div>
+            <div class="profile-actions">
+                <button id="load-profile-btn" class="action-btn">Load</button>
+                <button id="delete-profile-btn" class="action-btn danger-btn">Delete</button>
+            </div>
+            <div class="setting-row" style="margin-top: 10px;">
+                <label for="profile-name-input">Profile Name</label>
+                <input id="profile-name-input" type="text" class="profile-input" placeholder="e.g., One Piece...">
+            </div>
+            <button id="save-profile-btn" class="action-btn wide-btn success-btn" style="margin-top: 5px;">Save Current Settings</button>
+        </div>
+        <div class="setting-group">
           <h3>Language Settings</h3>
           <div class="setting-row">
             <label for="language-select">Subtitle Language</label>
