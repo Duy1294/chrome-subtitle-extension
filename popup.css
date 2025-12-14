@@ -12,15 +12,22 @@
   --opensubtitles-color: #8db84e;
 }
 
+html {
+  width: 500px !important;
+  height: 2000px !important;
+  min-height: 2000px !important;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   background-color: var(--bg-color);
   color: var(--fg-color);
   margin: 0;
   padding: 8px;
-  width: 380px;
+  width: 500px !important;
   box-sizing: border-box;
-  min-height: 700px;
+  height: 2000px !important;
+  min-height: 2000px !important;
   display: flex;
   flex-direction: column;
   overflow: hidden;
