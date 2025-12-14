@@ -37,7 +37,7 @@ let observer = null;
 let dictionaryIsEnabled = false;
 
 const tokenizerPromise = new Promise((resolve) => {
-    kuromoji.builder({ dicPath: chrome.runtime.getURL("dict/") }).build((err, tokenizer) => {
+    kuromoji.builder({ dicPath: chrome.runtime.getURL("assets/dict/") }).build((err, tokenizer) => {
         if (err) {
             console.error("Could not build kuromoji tokenizer:", err);
             resolve(null);

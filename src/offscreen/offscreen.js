@@ -1,4 +1,4 @@
-import { Archive } from './libarchive.js';
+import { Archive } from '../../lib/libarchive.js';
 
 window.addEventListener('load', function() {
     function parseJimaku(doc, query) {

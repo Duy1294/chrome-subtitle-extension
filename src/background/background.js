@@ -2,7 +2,7 @@ async function getOrCreateOffscreenDocument() {
   const existingContexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
   if (existingContexts.length > 0) return;
   await chrome.offscreen.createDocument({
-    url: 'offscreen.html',
+    url: 'src/offscreen/offscreen.html',
     reasons: ['DOM_PARSER', 'BLOBS'],
     justification: 'To parse HTML and process ZIP files from websites.',
   });
