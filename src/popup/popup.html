@@ -23,34 +23,51 @@
       <div id="search-tab" class="tab-content active">
         <div class="search-container">
           <input id="search-input" type="text" placeholder="Enter anime name...">
-          <div id="source-container">
-            <div class="custom-select-wrapper" style="flex-basis: 100%;">
-              <div id="source-select" class="custom-select custom-select-multiple">
-                <div class="custom-select-trigger"><span>Select Sources</span></div>
-                <div class="custom-options">
-                  <div class="custom-option" data-source="all" data-all-btn="true">
-                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
-                      <input type="checkbox" class="source-option-checkbox" data-source="all" style="margin-right: 8px;">
-                      <span>All</span>
-                    </label>
+          <div id="filters-row">
+            <div id="source-container">
+              <div class="custom-select-wrapper">
+                <div id="source-select" class="custom-select custom-select-multiple">
+                  <div class="custom-select-trigger"><span>Select Sources</span></div>
+                  <div class="custom-options">
+                    <div class="custom-option" data-source="all" data-all-btn="true">
+                      <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                        <input type="checkbox" class="source-option-checkbox" data-source="all" style="margin-right: 8px;">
+                        <span>All</span>
+                      </label>
+                    </div>
+                    <div class="custom-option" data-source="jimaku">
+                      <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                        <input type="checkbox" class="source-option-checkbox" data-source="jimaku" style="margin-right: 8px;">
+                        <span>Jimaku</span>
+                      </label>
+                    </div>
+                    <div class="custom-option" data-source="kitsunekko">
+                      <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                        <input type="checkbox" class="source-option-checkbox" data-source="kitsunekko" style="margin-right: 8px;">
+                        <span>Kitsunekko</span>
+                      </label>
+                    </div>
+                    <div class="custom-option" data-source="opensubtitles">
+                      <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                        <input type="checkbox" class="source-option-checkbox" data-source="opensubtitles" style="margin-right: 8px;">
+                        <span>OpenSubtitles</span>
+                      </label>
+                    </div>
                   </div>
-                  <div class="custom-option" data-source="jimaku">
-                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
-                      <input type="checkbox" class="source-option-checkbox" data-source="jimaku" style="margin-right: 8px;">
-                      <span>Jimaku</span>
-                    </label>
-                  </div>
-                  <div class="custom-option" data-source="kitsunekko">
-                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
-                      <input type="checkbox" class="source-option-checkbox" data-source="kitsunekko" style="margin-right: 8px;">
-                      <span>Kitsunekko</span>
-                    </label>
-                  </div>
-                  <div class="custom-option" data-source="opensubtitles">
-                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
-                      <input type="checkbox" class="source-option-checkbox" data-source="opensubtitles" style="margin-right: 8px;">
-                      <span>OpenSubtitles</span>
-                    </label>
+                </div>
+              </div>
+            </div>
+            <div id="language-container">
+              <div class="custom-select-wrapper">
+                <div id="search-language-select" class="custom-select">
+                  <div class="custom-select-trigger"><span>Japanese</span></div>
+                  <div class="custom-options">
+                    <div class="custom-option" data-value="japanese"><span>Japanese</span></div>
+                    <div class="custom-option" data-value="german"><span>German</span></div>
+                    <div class="custom-option" data-value="english"><span>English</span></div>
+                    <div class="custom-option" data-value="french"><span>French</span></div>
+                    <div class="custom-option" data-value="spanish"><span>Spanish</span></div>
+                    <div class="custom-option" data-value="vietnamese"><span>Vietnamese</span></div>
                   </div>
                 </div>
               </div>
@@ -109,22 +126,6 @@
         </div>
         <div class="setting-group">
           <h3>Language Settings</h3>
-          <div class="setting-row">
-            <label for="language-select">Subtitle Language</label>
-            <div class="custom-select-wrapper">
-              <div id="language-select" class="custom-select">
-                <div class="custom-select-trigger"><span>Japanese</span></div>
-                <div class="custom-options">
-                  <div class="custom-option" data-value="japanese"><span>Japanese</span></div>
-                  <div class="custom-option" data-value="german"><span>German</span></div>
-                  <div class="custom-option" data-value="english"><span>English</span></div>
-                  <div class="custom-option" data-value="french"><span>French</span></div>
-                  <div class="custom-option" data-value="spanish"><span>Spanish</span></div>
-                  <div class="custom-option" data-value="vietnamese"><span>Vietnamese</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
           <div class="setting-row">
             <label for="target-language-select">Translate To</label>
             <div class="custom-select-wrapper">

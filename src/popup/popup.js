@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const fontsizePlusBtn = document.getElementById('fontsize-plus');
     const furiganaToggle = document.getElementById('furigana-toggle');
     const dictionaryToggle = document.getElementById('dictionary-toggle');
-    const languageSelect = document.getElementById('language-select');
+    const languageSelect = document.getElementById('search-language-select');
     const targetLanguageSelect = document.getElementById('target-language-select');
     const loadFileBtn = document.getElementById('load-file-btn');
     const fileInput = document.getElementById('file-input');
@@ -214,7 +214,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     languageSelect.addEventListener('change', () => {
       updateDictionaryProviderOptions();
-      applySettingsFromPanel(false);
+      // Save language selection for search
+      chrome.storage.local.set({ [SETTINGS_KEY]: { ...getSettingsFromPanel(), language: languageSelect.dataset.value } });
     });
     
     dictionaryProviderSelect.addEventListener('change', () => {
@@ -700,7 +701,7 @@ document.addEventListener('DOMContentLoaded', function() {
             panelWidthInput.value = currentSettings.panelWidth;
             panelHeightInput.value = currentSettings.panelHeight;
             
-            setCustomSelectValue(languageSelect, currentSettings.language);
+            setCustomSelectValue(languageSelect, currentSettings.language || 'japanese');
             setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
             setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
             
@@ -745,6 +746,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 allSourceCheckbox.checked = true;
                 updateSourceDropdownText();
             }
+
 
             if (result[DEEPL_KEY_STORAGE]) {
                 deeplApiKeyInput.value = result[DEEPL_KEY_STORAGE];
@@ -1068,6 +1070,7 @@ document.addEventListener('DOMContentLoaded', function() {
         allSourceCheckbox.checked = allSelected && selectedSources.length === allSources.length;
     }
 
+
     searchButton.addEventListener('click', async () => {
         const { [LAST_SEARCH_TIME_KEY]: lastSearchTimestamp = 0 } = await chrome.storage.local.get(LAST_SEARCH_TIME_KEY);
         const now = Date.now();
@@ -1109,8 +1112,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // If clicking on trigger, toggle dropdown
         if (e.target.closest('.custom-select-trigger')) {
+            const isOpen = this.classList.contains('open');
             closeAllSelects(this);
-            this.classList.toggle('open');
+            if (!isOpen) {
+                this.classList.add('open');
+            }
             return;
         }
         
@@ -1171,6 +1177,8 @@ document.addEventListener('DOMContentLoaded', function() {
         closeAllSelects(this);
         this.classList.remove('open');
     });
+
+    applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
 
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));
     loadFileBtn.addEventListener('click', () => fileInput.click());
