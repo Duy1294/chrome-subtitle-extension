@@ -28,7 +28,7 @@ const openSubtitlesLangCodes = {
 const searchSources = {
   jimaku: { url: 'https://jimaku.cc/', method: 'GET' },
   kitsunekko: { url: 'https://kitsunekko.net/dirlist.php?dir=subtitles/japanese/', method: 'GET' },
-  opensubtitles: { url: 'https://www.opensubtitles.org/en/search/', method: 'GET' },
+  opensubtitles: { url: 'https://www.opensubtitles.org/en/search2/', method: 'GET' },
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -39,16 +39,72 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const fetchPromises = sourcesToSearch
       .filter(key => searchSources[key])
-      .map(sourceKey => {
+      .map(async sourceKey => {
         let url = searchSources[sourceKey].url;
+        // Always search all languages, filter will be done after parsing
         if (sourceKey === 'opensubtitles') {
-            const langCode = openSubtitlesLangCodes[language] || 'all';
-            url += `sublanguageid-${langCode}/moviename-${query.replace(/\s+/g, '-')}`;
+            // Search all languages for opensubtitles
+            // URL format: /en/search2/moviename-your+name/sublanguageid-all
+            // OpenSubtitles uses simple encoding: spaces become +, special chars are encoded
+            // Example: "your name" -> "your+name"
+            let normalizedQuery = query.trim();
+            // First, encode the query properly, then replace %20 with +
+            // This handles special characters correctly while using + for spaces
+            normalizedQuery = encodeURIComponent(normalizedQuery).replace(/%20/g, '+');
+            // Also handle already-encoded + signs (if any)
+            normalizedQuery = normalizedQuery.replace(/%2B/gi, '+');
+            url += `moviename-${normalizedQuery}/sublanguageid-all`;
         }
         const fetchOptions = {};
-        return fetchWithTimeout(url, fetchOptions)
-          .then(response => response.ok ? response.text() : Promise.reject(new Error(`Failed fetch from ${sourceKey}: ${response.status}`)))
-          .then(htmlText => ({ htmlText, source: sourceKey, query: query }))
+        const firstPageHtml = await fetchWithTimeout(url, fetchOptions)
+          .then(response => response.ok ? response.text() : Promise.reject(new Error(`Failed fetch from ${sourceKey}: ${response.status}`)));
+        
+        // For OpenSubtitles, check for pagination and fetch all pages
+        if (sourceKey === 'opensubtitles') {
+          const pages = [{ htmlText: firstPageHtml, source: sourceKey, query: query, selectedLanguage: language }];
+          
+          // Parse first page in offscreen document to find pagination links
+          await getOrCreateOffscreenDocument();
+          const paginationLinks = await new Promise((resolve) => {
+            const listener = (msg) => {
+              if (msg.action === 'paginationLinksExtracted') {
+                chrome.runtime.onMessage.removeListener(listener);
+                resolve(msg.links || []);
+              }
+            };
+            chrome.runtime.onMessage.addListener(listener);
+            chrome.runtime.sendMessage({
+              action: 'extractPaginationLinks',
+              htmlText: firstPageHtml,
+              baseUrl: url
+            });
+            // Timeout after 5 seconds
+            setTimeout(() => {
+              chrome.runtime.onMessage.removeListener(listener);
+              resolve([]);
+            }, 5000);
+          });
+          
+          // Fetch additional pages (limit to 10 pages to avoid too many requests)
+          const offsetUrlsArray = paginationLinks.slice(0, 10);
+          const pagePromises = offsetUrlsArray.map(async (pageUrl) => {
+            try {
+              const pageHtml = await fetchWithTimeout(pageUrl, fetchOptions, 15000)
+                .then(response => response.ok ? response.text() : null);
+              return pageHtml ? { htmlText: pageHtml, source: sourceKey, query: query, selectedLanguage: language } : null;
+            } catch (error) {
+              console.warn(`Failed to fetch OpenSubtitles page: ${pageUrl}`, error);
+              return null;
+            }
+          });
+          
+          const additionalPages = await Promise.all(pagePromises);
+          pages.push(...additionalPages.filter(p => p !== null));
+          
+          return pages; // Return array of pages
+        }
+        
+        return [{ htmlText: firstPageHtml, source: sourceKey, query: query, selectedLanguage: language }];
       });
 
     Promise.allSettled(fetchPromises)
@@ -58,7 +114,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const fetchErrors = [];
         results.forEach(result => {
           if (result.status === 'fulfilled') {
-            successfulPages.push(result.value);
+            // result.value is now an array of pages (for OpenSubtitles) or single page array (for others)
+            if (Array.isArray(result.value)) {
+              successfulPages.push(...result.value);
+            } else {
+              successfulPages.push(result.value);
+            }
           } else {
             const errorMessage = result.reason.message || 'Unknown fetch error';
             let sourceName = 'a source';
@@ -76,6 +137,109 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     return true;
 
+  } else if (request.action === 'fetchMoviePages') {
+    // Fetch multiple movie pages and parse subtitles from them
+    const { movieUrls, query } = request;
+    const fetchOptions = {};
+    const fetchPromises = movieUrls.slice(0, 20).map(async (url) => { // Limit to 20 movies to avoid too many requests
+      try {
+        const htmlText = await fetchWithTimeout(url, fetchOptions, 15000)
+          .then(response => response.ok ? response.text() : Promise.reject(`Failed to fetch ${url}: ${response.status}`));
+        return { htmlText, url, source: 'opensubtitles' };
+      } catch (error) {
+        console.warn(`Failed to fetch movie page ${url}:`, error);
+        return null;
+      }
+    });
+    
+    Promise.allSettled(fetchPromises).then(async (results) => {
+      await getOrCreateOffscreenDocument();
+      const successfulPages = [];
+      results.forEach(result => {
+        if (result.status === 'fulfilled' && result.value) {
+          successfulPages.push(result.value);
+        }
+      });
+      
+      // Send all movie pages to offscreen document to parse subtitles
+      const allSubtitles = [];
+      for (const page of successfulPages) {
+        try {
+          const subtitles = await new Promise((resolve) => {
+            const listener = (msg) => {
+              if (msg.action === 'episodeListParsed') {
+                chrome.runtime.onMessage.removeListener(listener);
+                resolve(msg.data || []);
+              }
+            };
+            chrome.runtime.onMessage.addListener(listener);
+            chrome.runtime.sendMessage({
+              action: 'parseEpisodeList',
+              htmlText: page.htmlText,
+              baseUrl: page.url,
+              source: 'opensubtitles'
+            });
+            // Timeout after 10 seconds
+            setTimeout(() => {
+              chrome.runtime.onMessage.removeListener(listener);
+              resolve([]);
+            }, 10000);
+          });
+          allSubtitles.push(...subtitles);
+        } catch (error) {
+          console.warn(`Failed to parse movie page ${page.url}:`, error);
+        }
+      }
+      
+      // Group duplicate subtitles across all movie pages
+      const groupedSubtitles = new Map();
+      allSubtitles.forEach(subtitle => {
+        // Extract base title (remove year and extra info)
+        const titleMatch = subtitle.title.match(/^(.+?)\s*\((\d{4})\)/);
+        let baseTitle = titleMatch ? titleMatch[1].trim() : subtitle.title;
+        
+        // Normalize baseTitle
+        baseTitle = baseTitle
+          .replace(/\s*-\s*[A-Z]{2,}\s*$/, '') // Remove " - HINDI", " - EN", etc.
+          .replace(/\s*-\s*.*$/, '') // Remove any other " - suffix"
+          .replace(/\s*\(.*?\)\s*$/, '') // Remove any remaining parentheses
+          .trim();
+        
+        const normalizedTitle = baseTitle.toLowerCase()
+          .replace(/[^\w\s]/g, '') // Remove special characters
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
+        
+        // Create group key: normalizedTitle + language
+        const langKey = subtitle.language || '_no_lang';
+        const groupKey = `${normalizedTitle}_${langKey}`;
+        
+        // Only add if not seen before (same movie + same language)
+        if (!groupedSubtitles.has(groupKey)) {
+          // Use the cleaned title with year if available
+          const displayTitle = titleMatch 
+            ? `${titleMatch[1].trim()} (${titleMatch[2]})`
+            : baseTitle;
+          
+          groupedSubtitles.set(groupKey, {
+            ...subtitle,
+            title: displayTitle
+          });
+        }
+      });
+      
+      // Convert map to array and sort
+      const finalResults = Array.from(groupedSubtitles.values());
+      finalResults.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }));
+      
+      // Send results back
+      chrome.runtime.sendMessage({
+        action: 'searchResults',
+        data: finalResults,
+        errors: []
+      });
+    });
+    return true;
   } else if (request.action === 'fetchSubtitlePage') {
     const fetchOptions = {};
     fetchWithTimeout(request.url, fetchOptions, 15000)
@@ -87,12 +251,88 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         else if (request.url.includes('jimaku.cc')) source = 'jimaku';
         else if (request.url.includes('opensubtitles.org')) source = 'opensubtitles';
         
-        chrome.runtime.sendMessage({
-          action: 'parseEpisodeList',
-          htmlText: htmlText,
-          baseUrl: request.url,
-          source: source
-        });
+        // For OpenSubtitles, check for pagination and fetch all subtitle pages
+        if (source === 'opensubtitles') {
+          const pages = [{ htmlText: htmlText, source: source, baseUrl: request.url }];
+          
+          // Parse first page to find pagination links
+          const paginationLinks = await new Promise((resolve) => {
+            const listener = (msg) => {
+              if (msg.action === 'paginationLinksExtracted') {
+                chrome.runtime.onMessage.removeListener(listener);
+                resolve(msg.links || []);
+              }
+            };
+            chrome.runtime.onMessage.addListener(listener);
+            chrome.runtime.sendMessage({
+              action: 'extractPaginationLinks',
+              htmlText: htmlText,
+              baseUrl: request.url
+            });
+            // Timeout after 5 seconds
+            setTimeout(() => {
+              chrome.runtime.onMessage.removeListener(listener);
+              resolve([]);
+            }, 5000);
+          });
+          
+          // Fetch all pagination pages (limit to 20 pages to avoid too many requests)
+          const offsetUrlsArray = paginationLinks.slice(0, 20);
+          const pagePromises = offsetUrlsArray.map(async (pageUrl) => {
+            try {
+              const pageHtml = await fetchWithTimeout(pageUrl, fetchOptions, 15000)
+                .then(response => response.ok ? response.text() : null);
+              return pageHtml ? { htmlText: pageHtml, source: source, baseUrl: pageUrl } : null;
+            } catch (error) {
+              console.warn(`Failed to fetch OpenSubtitles subtitle page: ${pageUrl}`, error);
+              return null;
+            }
+          });
+          
+          const additionalPages = await Promise.all(pagePromises);
+          pages.push(...additionalPages.filter(p => p !== null));
+          
+          // Parse all pages and combine results
+          const allSubtitles = [];
+          for (const page of pages) {
+            try {
+              const subtitles = await new Promise((resolve) => {
+                const listener = (msg) => {
+                  if (msg.action === 'episodeListParsed') {
+                    chrome.runtime.onMessage.removeListener(listener);
+                    resolve(msg.data || []);
+                  }
+                };
+                chrome.runtime.onMessage.addListener(listener);
+                chrome.runtime.sendMessage({
+                  action: 'parseEpisodeList',
+                  htmlText: page.htmlText,
+                  baseUrl: page.baseUrl,
+                  source: source
+                });
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                  chrome.runtime.onMessage.removeListener(listener);
+                  resolve([]);
+                }, 10000);
+              });
+              allSubtitles.push(...subtitles);
+            } catch (error) {
+              console.warn(`Failed to parse subtitle page ${page.baseUrl}:`, error);
+            }
+          }
+          
+          // Send all subtitles (no grouping, keep original order)
+          chrome.runtime.sendMessage({ action: 'episodeListReady', data: allSubtitles, error: null });
+        } else {
+          // For other sources, use original logic
+          chrome.runtime.sendMessage({
+            action: 'parseEpisodeList',
+            htmlText: htmlText,
+            baseUrl: request.url,
+            source: source
+          });
+        }
       })
       .catch(error => {
         console.error(`Fetch subtitle page error for ${request.url}:`, { message: error.message, stack: error.stack });
@@ -102,19 +342,80 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   
   } else if (request.action === 'fetchSubtitleContent') {
     (async () => {
-        await getOrCreateOffscreenDocument();
-        chrome.runtime.sendMessage({
-            action: 'fetchAndProcessFile',
-            url: request.url,
-            format: request.format
-        });
+        // Check if this is an OpenSubtitles detail page (not a direct download link)
+        if (request.url.includes('opensubtitles.org') && 
+            (request.url.includes('/subtitles/') || request.url.includes('/en/subtitles/'))) {
+            // This is a detail page, need to fetch HTML and extract download link
+            try {
+                const htmlText = await fetchWithTimeout(request.url, {}, 15000)
+                    .then(response => response.ok ? response.text() : Promise.reject(`Network response was not ok: ${response.status}`));
+                
+                await getOrCreateOffscreenDocument();
+                
+                // Extract download link from HTML
+                const downloadLink = await new Promise((resolve) => {
+                    const listener = (msg) => {
+                        if (msg.action === 'downloadLinkExtracted') {
+                            chrome.runtime.onMessage.removeListener(listener);
+                            resolve(msg.downloadUrl || null);
+                        }
+                    };
+                    chrome.runtime.onMessage.addListener(listener);
+                    chrome.runtime.sendMessage({
+                        action: 'extractOpenSubtitlesDownloadLink',
+                        htmlText: htmlText,
+                        baseUrl: request.url
+                    });
+                    setTimeout(() => {
+                        chrome.runtime.onMessage.removeListener(listener);
+                        resolve(null);
+                    }, 5000);
+                });
+                
+                if (downloadLink) {
+                    // Use the extracted download link
+                    chrome.runtime.sendMessage({
+                        action: 'fetchAndProcessFile',
+                        url: downloadLink,
+                        format: request.format || 'zip' // Default to zip for OpenSubtitles
+                    });
+                } else {
+                    chrome.runtime.sendMessage({ 
+                        action: 'showStatus', 
+                        message: `<i>Error: Could not find download link on OpenSubtitles page.</i>` 
+                    });
+                }
+            } catch (error) {
+                console.error(`Error fetching OpenSubtitles detail page:`, error);
+                chrome.runtime.sendMessage({ 
+                    action: 'showStatus', 
+                    message: `<i>Error: Could not load OpenSubtitles page: ${error.message}</i>` 
+                });
+            }
+        } else {
+            // Direct download link or other sources
+            await getOrCreateOffscreenDocument();
+            chrome.runtime.sendMessage({
+                action: 'fetchAndProcessFile',
+                url: request.url,
+                format: request.format
+            });
+        }
     })();
     return true;
   
   } else if (request.action === 'unzippedSubtitleReady') {
+      console.log('Background: Received unzippedSubtitleReady, data length:', request.data ? request.data.length : 0);
       chrome.storage.session.set({ 'session_currentSubData': { data: request.data, isNew: true } })
           .then(() => {
-              chrome.runtime.sendMessage({ action: 'subtitleReadyForPopup' });
+              console.log('Background: Session storage set, sending subtitleReadyForPopup');
+              chrome.runtime.sendMessage({ action: 'subtitleReadyForPopup' })
+                  .catch(error => {
+                      console.error('Background: Error sending subtitleReadyForPopup:', error);
+                  });
+          })
+          .catch(error => {
+              console.error('Background: Error setting session storage:', error);
           });
       return true;
   

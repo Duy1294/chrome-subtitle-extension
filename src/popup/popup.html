@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html style="width: 500px !important; height: 2000px !important; min-height: 2000px !important;">
+<html style="width: 500px !important; height: 2000px !important; min-height: 2000px !important;" lang="en">
 <head>
+  <meta charset="UTF-8">
   <link rel="stylesheet" href="popup.css">
   <style>
     html, body {
@@ -60,8 +61,9 @@
             <div id="language-container">
               <div class="custom-select-wrapper">
                 <div id="search-language-select" class="custom-select">
-                  <div class="custom-select-trigger"><span>Japanese</span></div>
+                  <div class="custom-select-trigger"><span>All Languages</span></div>
                   <div class="custom-options">
+                    <div class="custom-option" data-value="all"><span>All Languages</span></div>
                     <div class="custom-option" data-value="japanese"><span>Japanese</span></div>
                     <div class="custom-option" data-value="german"><span>German</span></div>
                     <div class="custom-option" data-value="english"><span>English</span></div>
@@ -80,6 +82,9 @@
         <button id="back-button" class="action-btn">&larr; Back to results</button>
 
         <div id="filter-container" style="display: none; margin-bottom: 8px;">
+          <div id="language-filter-indicator" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; display: none;">
+            <span id="language-filter-text"></span>
+          </div>
           <input id="filter-input" type="text" placeholder="Filter results...">
         </div>
 

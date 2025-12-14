@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const resetSettingsBtn = document.getElementById('reset-settings-btn');
     const filterContainer = document.getElementById('filter-container');
     const filterInput = document.getElementById('filter-input');
+    const languageFilterIndicator = document.getElementById('language-filter-indicator');
+    const languageFilterText = document.getElementById('language-filter-text');
     const deeplApiKeyInput = document.getElementById('deepl-api-key-input');
     const dictionaryProviderSelect = document.getElementById('dictionary-provider-select');
     const vocabTabBtn = document.getElementById('vocab-tab-btn');
@@ -107,7 +109,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let transcriptSubtitles = [];
     let currentlyHighlighted = null;
-    let searchResultsCache = null;
+    let searchResultsCache = null; // Store all unfiltered results
+    let allSearchResults = []; // Store all results for filtering
+    let allEpisodeResults = []; // Store all episode/subtitle results for filtering
 
     function initializeCustomSelects() {
         document.querySelectorAll('.custom-select').forEach(selectElement => {
@@ -215,7 +219,21 @@ document.addEventListener('DOMContentLoaded', function() {
     languageSelect.addEventListener('change', () => {
       updateDictionaryProviderOptions();
       // Save language selection for search
-      chrome.storage.local.set({ [SETTINGS_KEY]: { ...getSettingsFromPanel(), language: languageSelect.dataset.value } });
+      const selectedLanguage = languageSelect.dataset.value;
+      chrome.storage.local.set({ searchLanguage: selectedLanguage });
+      
+      // Filter results immediately if we have cached results
+      // Only filter episode list, NOT search results
+      if (allEpisodeResults.length > 0) {
+          // If we're in episode list view, filter episode results
+          renderEpisodeList(allEpisodeResults, null);
+      } else if (allSearchResults.length > 0) {
+          // For search results, don't filter - just re-render with all results
+          renderSearchResults(allSearchResults, searchResultsCache?.errors || [], 'all');
+      } else {
+          // Update indicator even if no results yet
+          updateLanguageFilterIndicator(selectedLanguage);
+      }
     });
     
     dictionaryProviderSelect.addEventListener('change', () => {
@@ -283,7 +301,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function updateDictionaryProviderOptions() {
-        const currentLanguage = languageSelect.dataset.value || 'japanese';
+        let currentLanguage = languageSelect.dataset.value || 'all';
+        // For dictionary, if "all" is selected, default to japanese
+        if (currentLanguage === 'all') {
+            currentLanguage = 'japanese';
+        }
         
         const availableProviders = {
             japanese: [{ value: 'jisho', text: 'Jisho.org' }, { value: 'google_translate', text: 'Google Translate' }],
@@ -362,12 +384,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function loadSubData(srtText, isAppending = false) {
+        console.log('Popup: loadSubData called, isAppending:', isAppending, 'textLength:', srtText ? srtText.length : 0);
+        
+        if (!srtText || srtText.trim() === '') {
+            console.error('Popup: Empty subtitle text received');
+            showStatusMessage(`<i style="color: var(--danger-color);">Error: Empty subtitle file.</i>`);
+            return;
+        }
+        
         if (isAppending) {
             const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
             const existingSub = result[SESSION_SUB_KEY] || { data: '' };
             const newSubText = existingSub.data ? (existingSub.data + '\n\n' + srtText) : srtText;
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: newSubText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(newSubText);
+            console.log('Popup: Parsed transcript subtitles count:', transcriptSubtitles.length);
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs[0] && tabs[0].id) {
                     chrome.tabs.sendMessage(tabs[0].id, { action: 'displaySubtitles', settings: getSettingsFromPanel(), data: srtText, format: 'srt', append: true });
@@ -377,10 +408,20 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(srtText);
+            console.log('Popup: Parsed transcript subtitles count:', transcriptSubtitles.length);
+            
+            if (transcriptSubtitles.length === 0) {
+                console.error('Popup: No subtitles parsed from text');
+                showStatusMessage(`<i style="color: var(--danger-color);">Error: Could not parse subtitle file. Please check the file format.</i>`);
+                return;
+            }
+            
+            updateTranscriptDisplay();
+            // Switch to Transcript tab to show the loaded subtitle
+            showTab('transcript-tab');
             await applySettingsFromPanel(true);
             showStatusMessage(`<i style="color: var(--success-color);">Subtitle loaded successfully. View in Transcript tab.</i>`);
         }
-        updateTranscriptDisplay();
     }
 
     function showTab(targetTabId) {
@@ -686,7 +727,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function loadSettings() {
-        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE, DICTIONARY_PROVIDER_KEY, TARGET_LANGUAGE_KEY], (result) => {
+        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE, DICTIONARY_PROVIDER_KEY, TARGET_LANGUAGE_KEY, 'searchLanguage'], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
             const currentSettings = { ...defaultSettings, ...savedSettings };
             const rateInput = document.getElementById('rate-input');
@@ -701,7 +742,7 @@ document.addEventListener('DOMContentLoaded', function() {
             panelWidthInput.value = currentSettings.panelWidth;
             panelHeightInput.value = currentSettings.panelHeight;
             
-            setCustomSelectValue(languageSelect, currentSettings.language || 'japanese');
+            setCustomSelectValue(languageSelect, result.searchLanguage || 'all');
             setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
             setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
             
@@ -797,7 +838,30 @@ document.addEventListener('DOMContentLoaded', function() {
     function createItem(item, onLoad, onAppend) {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'result-item';
+        if (item.isMovie) {
+            itemDiv.classList.add('result-item-movie');
+        }
         itemDiv.addEventListener('click', onLoad);
+        
+        // Add language indicator (text name) on the left
+        // For movies, show "MOVIE" indicator instead of language
+        if (item.isMovie) {
+            const movieIndicator = document.createElement('span');
+            movieIndicator.className = 'result-language-indicator result-movie-indicator';
+            movieIndicator.textContent = 'MOVIE';
+            movieIndicator.title = 'Click to view subtitles for this movie/show';
+            movieIndicator.setAttribute('aria-label', 'Movie/Show - Click to view subtitles');
+            itemDiv.appendChild(movieIndicator);
+        } else if (item.language) {
+            const languageIndicator = document.createElement('span');
+            languageIndicator.className = 'result-language-indicator';
+            const languageName = getLanguageDisplayName(item.language);
+            languageIndicator.textContent = languageName || item.language.toUpperCase();
+            languageIndicator.title = languageName || 'Unknown Language';
+            languageIndicator.setAttribute('aria-label', languageName || 'Unknown Language');
+            itemDiv.appendChild(languageIndicator);
+        }
+        
         const mainInfoDiv = document.createElement('div');
         mainInfoDiv.className = 'result-main-info';
         const titleSpan = document.createElement('span');
@@ -811,7 +875,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (item.source) {
             const sourceSpan = document.createElement('span');
             sourceSpan.textContent = item.source.replace('.org', '');
-            sourceSpan.className = `result-source source-${item.source.toLowerCase().replace('.org', '')}`;
+            let sourceClass = item.source.toLowerCase().replace('.org', '').replace(/-/g, '').replace(/\s+/g, '');
+            sourceSpan.className = `result-source source-${sourceClass}`;
             controlsDiv.appendChild(sourceSpan);
         }
         if (onAppend) {
@@ -829,9 +894,164 @@ document.addEventListener('DOMContentLoaded', function() {
         return itemDiv;
     }
 
-    function renderSearchResults(data, errors) {
+    function getLanguageDisplayName(language) {
+        const languageNames = {
+            'all': 'All Languages',
+            'japanese': 'Japanese',
+            'german': 'German',
+            'english': 'English',
+            'french': 'French',
+            'spanish': 'Spanish',
+            'vietnamese': 'Vietnamese',
+            'arabic': 'Arabic',
+            'chinese': 'Chinese',
+            'korean': 'Korean',
+            'italian': 'Italian',
+            'portuguese': 'Portuguese',
+            'russian': 'Russian',
+            'thai': 'Thai',
+            'indonesian': 'Indonesian',
+            'turkish': 'Turkish',
+            'polish': 'Polish',
+            'dutch': 'Dutch',
+            'swedish': 'Swedish',
+            'norwegian': 'Norwegian',
+            'danish': 'Danish',
+            'finnish': 'Finnish',
+            'greek': 'Greek',
+            'czech': 'Czech',
+            'hungarian': 'Hungarian',
+            'romanian': 'Romanian',
+            'bulgarian': 'Bulgarian',
+            'croatian': 'Croatian',
+            'serbian': 'Serbian',
+            'slovak': 'Slovak',
+            'slovenian': 'Slovenian',
+            'hindi': 'Hindi',
+            'persian': 'Persian',
+            'tagalog': 'Tagalog',
+            'kannada': 'Kannada',
+            'belarusian': 'Belarusian',
+            'ukrainian': 'Ukrainian',
+            'malay': 'Malay',
+            'burmese': 'Burmese'
+        };
+        // If not found, capitalize first letter
+        if (languageNames[language]) {
+            return languageNames[language];
+        }
+        // Capitalize first letter of language code
+        return language ? language.charAt(0).toUpperCase() + language.slice(1) : 'Unknown';
+    }
+
+    // Mapping language to country code (ISO 3166-1 alpha-2)
+    const languageToCountryCode = {
+        'japanese': 'jp',
+        'german': 'de',
+        'english': 'gb', // UK flag for English
+        'french': 'fr',
+        'spanish': 'es',
+        'vietnamese': 'vn',
+        'arabic': 'sa',
+        'chinese': 'cn',
+        'korean': 'kr',
+        'italian': 'it',
+        'portuguese': 'pt',
+        'russian': 'ru',
+        'thai': 'th',
+        'indonesian': 'id',
+        'turkish': 'tr',
+        'polish': 'pl',
+        'dutch': 'nl',
+        'swedish': 'se',
+        'norwegian': 'no',
+        'danish': 'dk',
+        'finnish': 'fi',
+        'greek': 'gr',
+        'czech': 'cz',
+        'hungarian': 'hu',
+        'romanian': 'ro',
+        'bulgarian': 'bg',
+        'croatian': 'hr',
+        'serbian': 'rs',
+        'slovak': 'sk',
+        'slovenian': 'si'
+    };
+
+    function getCountryCodeFromLanguage(language) {
+        return languageToCountryCode[language] || null;
+    }
+
+    function getLanguageFlag(language) {
+        const countryCode = getCountryCodeFromLanguage(language);
+        if (!countryCode) {
+            return null; // Return null to use default icon
+        }
+        return countryCode;
+    }
+
+    function getLanguageCode(language) {
+        const languageCodes = {
+            'japanese': 'JP',
+            'german': 'DE',
+            'english': 'EN',
+            'french': 'FR',
+            'spanish': 'ES',
+            'vietnamese': 'VI'
+        };
+        return languageCodes[language] || '??';
+    }
+
+    function updateLanguageFilterIndicator(selectedLanguage) {
+        if (!languageFilterIndicator || !languageFilterText) return;
+        
+        // Check if we're in episode list view or search results view
+        const isEpisodeListView = allEpisodeResults.length > 0;
+        const resultsToUse = isEpisodeListView ? allEpisodeResults : allSearchResults;
+        
+        if (selectedLanguage && selectedLanguage !== 'all' && resultsToUse.length > 0) {
+            const filteredCount = filterResultsByLanguage(resultsToUse, selectedLanguage).length;
+            const totalCount = resultsToUse.length;
+            languageFilterText.textContent = `Showing: ${getLanguageDisplayName(selectedLanguage)} (${filteredCount} of ${totalCount} results)`;
+            languageFilterIndicator.style.display = 'block';
+        } else if (selectedLanguage === 'all' && resultsToUse.length > 0) {
+            languageFilterText.textContent = `Showing: All Languages (${resultsToUse.length} results)`;
+            languageFilterIndicator.style.display = 'block';
+        } else {
+            languageFilterIndicator.style.display = 'none';
+        }
+    }
+
+    function filterResultsByLanguage(results, selectedLanguage) {
+        if (!selectedLanguage || selectedLanguage === 'all') {
+            // Show all results when "all" is selected (including unknown languages)
+            return results;
+        }
+        // Normalize language values for comparison (lowercase, trim)
+        const normalizedSelected = selectedLanguage.toLowerCase().trim();
+        // Filter by exact language match only (exclude null/unknown)
+        return results.filter(result => {
+            if (!result.language) return false; // Exclude results with no language
+            const normalizedResultLang = result.language.toLowerCase().trim();
+            return normalizedResultLang === normalizedSelected;
+        });
+    }
+
+    function renderSearchResults(data, errors, languageFilter = null) {
+        // Store all results for filtering
+        allSearchResults = data || [];
+        
+        // Don't filter search results - show all results (movies and subtitles)
+        // Language filter only applies to episode list (after clicking on a movie)
+        const filteredData = allSearchResults; // Always show all search results
+        
+        // Hide language filter indicator for search results
+        if (languageFilterIndicator) {
+            languageFilterIndicator.style.display = 'none';
+        }
+        
         resultsDiv.innerHTML = '';
-        if (data.length === 0 && errors.length === 0) {
+        if (filteredData.length === 0 && errors.length === 0) {
             showStatusMessage('<i>No results found.</i>');
             return;
         }
@@ -842,11 +1062,18 @@ document.addEventListener('DOMContentLoaded', function() {
             errorContainer.innerHTML = errors.map(e => `<i>- ${e}</i>`).join('<br>');
             resultsDiv.appendChild(errorContainer);
         }
-        if (data && data.length > 0) {
-            data.forEach(item => {
+        if (filteredData && filteredData.length > 0) {
+            filteredData.forEach(item => {
                 const onClick = () => {
-                    showStatusMessage(`<i>Loading list for <b>${item.title}</b>...</i>`);
-                    chrome.runtime.sendMessage({ action: 'fetchSubtitlePage', url: item.url });
+                    if (item.isMovie) {
+                        // This is a movie/show page - fetch subtitles from it
+                        showStatusMessage(`<i>Loading subtitles for <b>${item.title}</b>...</i>`);
+                        chrome.runtime.sendMessage({ action: 'fetchSubtitlePage', url: item.url });
+                    } else {
+                        // This is a direct subtitle - load it
+                        showStatusMessage(`<i>Loading list for <b>${item.title}</b>...</i>`);
+                        chrome.runtime.sendMessage({ action: 'fetchSubtitlePage', url: item.url });
+                    }
                 };
                 resultsDiv.appendChild(createItem(item, onClick, null));
             });
@@ -861,12 +1088,26 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         if (data && data.length > 0) {
-            showResults();
-            data.forEach(item => {
-                const onEpisodeLoad = () => handleEpisodeClick(item, false);
-                const onEpisodeAppend = () => handleEpisodeClick(item, true);
-                resultsDiv.appendChild(createItem(item, onEpisodeLoad, onEpisodeAppend));
-            });
+            // Store all episode results for filtering
+            allEpisodeResults = data || [];
+            
+            // Apply language filter
+            const selectedLanguage = languageSelect.dataset.value || 'all';
+            const filteredData = filterResultsByLanguage(allEpisodeResults, selectedLanguage);
+            
+            // Update language filter indicator
+            updateLanguageFilterIndicator(selectedLanguage);
+            
+            if (filteredData.length > 0) {
+                showResults();
+                filteredData.forEach(item => {
+                    const onEpisodeLoad = () => handleEpisodeClick(item, false);
+                    const onEpisodeAppend = () => handleEpisodeClick(item, true);
+                    resultsDiv.appendChild(createItem(item, onEpisodeLoad, onEpisodeAppend));
+                });
+            } else {
+                showStatusMessage(`<i>No subtitles found for selected language (${getLanguageDisplayName(selectedLanguage) || selectedLanguage}).</i>`);
+            }
             filterContainer.style.display = 'block';
         } else {
             showStatusMessage('<i>No subtitle files found on this page.</i>');
@@ -883,7 +1124,10 @@ document.addEventListener('DOMContentLoaded', function() {
             format = episodeItem.format;
         } else {
             const url = episodeItem.url.toLowerCase();
-            if (url.endsWith('.ass')) {
+            // Check if it's OpenSubtitles - they always return ZIP files
+            if (url.includes('opensubtitles.org') && (url.includes('/download/') || url.includes('/subtitleserve/'))) {
+                format = 'zip'; // OpenSubtitles always returns ZIP files
+            } else if (url.endsWith('.ass') || url.endsWith('.ssa')) {
                 format = 'ass';
             } else if (url.includes('.zip')) {
                 format = 'zip';
@@ -894,16 +1138,24 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        console.log('handleEpisodeClick: URL:', episodeItem.url);
+        console.log('handleEpisodeClick: Detected format:', format);
+        
         chrome.runtime.sendMessage({ action: 'fetchSubtitleContent', url: episodeItem.url, format: format });
     }
     
     async function checkAndLoadSessionSubtitle() {
+        console.log('Popup: checkAndLoadSessionSubtitle called');
         const result = await chrome.storage.session.get(SESSION_SUB_KEY);
+        console.log('Popup: Session data:', result[SESSION_SUB_KEY] ? { isNew: result[SESSION_SUB_KEY].isNew, dataLength: result[SESSION_SUB_KEY].data ? result[SESSION_SUB_KEY].data.length : 0 } : 'null');
         if (result[SESSION_SUB_KEY] && result[SESSION_SUB_KEY].isNew) {
             const subData = result[SESSION_SUB_KEY];
             const isAppending = (await chrome.storage.session.get(SESSION_APPEND_KEY))[SESSION_APPEND_KEY] || false;
             await chrome.storage.session.remove(SESSION_APPEND_KEY);
+            console.log('Popup: Loading subtitle data, isAppending:', isAppending);
             await loadSubData(subData.data, isAppending);
+        } else {
+            console.log('Popup: No new subtitle data found in session');
         }
     }
 
@@ -916,12 +1168,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         searchResultsCache = state.backButtonCache;
         if (state.view === 'episodeList') {
-            renderEpisodeList(state.data, state.error);
+            allEpisodeResults = state.data || [];
+            renderEpisodeList(allEpisodeResults, state.error);
             if (searchResultsCache) {
                 backButton.style.display = 'block';
             }
         } else if (state.view === 'searchResults') {
-            renderSearchResults(state.data, state.errors);
+            allSearchResults = state.data || [];
+            searchResultsCache = { data: allSearchResults, errors: state.errors };
+            const selectedLanguage = languageSelect.dataset.value || 'all';
+            renderSearchResults(allSearchResults, state.errors, selectedLanguage);
             backButton.style.display = 'none';
         } else {
             showStatusMessage('<i>Enter a name and click Search.</i>');
@@ -1028,7 +1284,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     backButton.addEventListener('click', () => {
         if (searchResultsCache) {
-            renderSearchResults(searchResultsCache.data, searchResultsCache.errors);
+            allSearchResults = searchResultsCache.data || [];
+            const selectedLanguage = languageSelect.dataset.value || 'all';
+            renderSearchResults(allSearchResults, searchResultsCache.errors, selectedLanguage);
             chrome.storage.session.set({ [UI_STATE_KEY]: {
                 view: 'searchResults',
                 data: searchResultsCache.data,
@@ -1090,7 +1348,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         await chrome.storage.local.set({ [LAST_SEARCH_TIME_KEY]: now });
-        const language = languageSelect.dataset.value;
+        const language = languageSelect.dataset.value || 'all';
         showStatusMessage('<i>Searching...</i>');
         saveSearchHistory(query);
         chrome.runtime.sendMessage({ action: 'search', query: query, sources: selectedSources, language: language });
@@ -1237,21 +1495,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         if (request.action === 'searchResults') {
-            renderSearchResults(request.data, request.errors);
+            // Store all results (unfiltered)
+            allSearchResults = request.data || [];
+            searchResultsCache = { data: allSearchResults, errors: request.errors };
+            
+            // Render with current language filter
+            const selectedLanguage = languageSelect.dataset.value || 'all';
+            renderSearchResults(allSearchResults, request.errors, selectedLanguage);
+            
             chrome.storage.session.set({ [UI_STATE_KEY]: {
                 view: 'searchResults',
-                data: request.data,
+                data: allSearchResults,
                 errors: request.errors,
                 backButtonCache: null
             }});
         } else if (request.action === 'episodeListReady') {
-            renderEpisodeList(request.data, request.error);
+            allEpisodeResults = request.data || [];
+            renderEpisodeList(allEpisodeResults, request.error);
             if (searchResultsCache) {
                 backButton.style.display = 'block';
             }
             chrome.storage.session.set({ [UI_STATE_KEY]: {
                 view: 'episodeList',
-                data: request.data,
+                data: allEpisodeResults,
                 error: request.error,
                 backButtonCache: searchResultsCache
             }});
