@@ -291,10 +291,9 @@ main {
   text-align: center;
 }
 
-.result-movie-indicator {
-  background-color: var(--accent-color, #4CAF50);
-  color: white;
-  font-weight: 700;
+.result-source-indicator {
+  /* Source indicator uses the same styling as result-language-indicator */
+  /* Additional source-specific colors are applied via .source-* classes */
 }
 
 .result-main-info {

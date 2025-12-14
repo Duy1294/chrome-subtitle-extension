@@ -835,7 +835,7 @@ document.addEventListener('DOMContentLoaded', function() {
         applySettingsFromPanel(false);
     }
     
-    function createItem(item, onLoad, onAppend) {
+    function createItem(item, onLoad, onAppend, showSource = true) {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'result-item';
         if (item.isMovie) {
@@ -843,16 +843,30 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         itemDiv.addEventListener('click', onLoad);
         
-        // Add language indicator (text name) on the left
-        // For movies, show "MOVIE" indicator instead of language
-        if (item.isMovie) {
-            const movieIndicator = document.createElement('span');
-            movieIndicator.className = 'result-language-indicator result-movie-indicator';
-            movieIndicator.textContent = 'MOVIE';
-            movieIndicator.title = 'Click to view subtitles for this movie/show';
-            movieIndicator.setAttribute('aria-label', 'Movie/Show - Click to view subtitles');
-            itemDiv.appendChild(movieIndicator);
+        // Determine what to show: source tag for search results, language tag for episode list
+        if (showSource && item.source) {
+            // Show source indicator for search results (replaces MOVIE tag)
+            const sourceIndicator = document.createElement('span');
+            sourceIndicator.className = 'result-language-indicator result-source-indicator';
+            let sourceText = item.source.replace('.org', '');
+            // Format source name for display
+            if (sourceText.toLowerCase() === 'opensubtitles') {
+                sourceText = 'OPENSUBTITLES';
+            } else if (sourceText.toLowerCase() === 'jimaku') {
+                sourceText = 'JIMAKU';
+            } else if (sourceText.toLowerCase() === 'kitsunekko') {
+                sourceText = 'KITSUNEKKO';
+            } else {
+                sourceText = sourceText.toUpperCase();
+            }
+            sourceIndicator.textContent = sourceText;
+            let sourceClass = item.source.toLowerCase().replace('.org', '').replace(/-/g, '').replace(/\s+/g, '');
+            sourceIndicator.classList.add(`source-${sourceClass}`);
+            sourceIndicator.title = item.source;
+            sourceIndicator.setAttribute('aria-label', item.source);
+            itemDiv.appendChild(sourceIndicator);
         } else if (item.language) {
+            // Show language indicator for episode list (after clicking on a movie)
             const languageIndicator = document.createElement('span');
             languageIndicator.className = 'result-language-indicator';
             const languageName = getLanguageDisplayName(item.language);
@@ -872,13 +886,7 @@ document.addEventListener('DOMContentLoaded', function() {
         itemDiv.appendChild(mainInfoDiv);
         const controlsDiv = document.createElement('div');
         controlsDiv.className = 'result-controls';
-        if (item.source) {
-            const sourceSpan = document.createElement('span');
-            sourceSpan.textContent = item.source.replace('.org', '');
-            let sourceClass = item.source.toLowerCase().replace('.org', '').replace(/-/g, '').replace(/\s+/g, '');
-            sourceSpan.className = `result-source source-${sourceClass}`;
-            controlsDiv.appendChild(sourceSpan);
-        }
+        // Source tag is now shown on the left, no need to show it here
         if (onAppend) {
             const appendBtn = document.createElement('button');
             appendBtn.innerHTML = '+';
@@ -1103,7 +1111,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 filteredData.forEach(item => {
                     const onEpisodeLoad = () => handleEpisodeClick(item, false);
                     const onEpisodeAppend = () => handleEpisodeClick(item, true);
-                    resultsDiv.appendChild(createItem(item, onEpisodeLoad, onEpisodeAppend));
+                    // Episode list: show language tag, not source tag
+                    resultsDiv.appendChild(createItem(item, onEpisodeLoad, onEpisodeAppend, false));
                 });
             } else {
                 showStatusMessage(`<i>No subtitles found for selected language (${getLanguageDisplayName(selectedLanguage) || selectedLanguage}).</i>`);
