@@ -545,12 +545,18 @@ function updateSubtitleAppearance() {
         subtitleContainer.style.animation = '';
 
         // Always create interval if either radiant is enabled
+        // Base speed calculation: speedFactor = (speed / 10) * 0.02
+        // This means speed 1 = 0.002, speed 10 = 0.02 (10x faster)
+        const baseSpeed = lastSettings.radiantSpeed || 5;
+        const MAX_SPEED_VALUE = 10; // Maximum speed setting value
+        
         if (lastSettings.radiantRandomEnabled) {
             radiantIntervalId = setInterval(() => {
-                const maxSpeed = lastSettings.radiantSpeed || 10;
-                const randomSpeed = Math.random() * (maxSpeed - 1) + 1;
+                // Random speed between 1 and baseSpeed (maxSpeed setting)
+                const randomSpeed = Math.random() * (baseSpeed - 1) + 1;
                 
-                const speedFactor = (randomSpeed / 10) * 0.02;
+                // Calculate speed factor: normalize to 0-1 range, then scale by 0.02
+                const speedFactor = (randomSpeed / MAX_SPEED_VALUE) * 0.02;
                 if (radiantTextEnabled) {
                     textPosition = (textPosition + speedFactor) % 1;
                 }
@@ -564,16 +570,17 @@ function updateSubtitleAppearance() {
                 case 'pulse':
                 case 'pulseFast':
                     let angle = 0;
-                    const speed = lastSettings.radiantSpeed || 5;
                     const pulseFrequency = lastSettings.radiantMode === 'pulseFast' ? 0.05 : 0.02;
                     
                     radiantIntervalId = setInterval(() => {
                         angle += pulseFrequency;
                         const sinValue = Math.sin(angle); // -1 to 1
                         const normalizedSin = (sinValue + 1) / 2; // 0 to 1
-                        const pulsatingSpeed = 1 + (normalizedSin * (speed - 1)); // From 1 to selected speed
+                        // Pulsating speed oscillates between 1 and baseSpeed
+                        const pulsatingSpeed = 1 + (normalizedSin * (baseSpeed - 1)); // From 1 to baseSpeed
                         
-                        const speedFactor = (pulsatingSpeed / 10) * 0.02;
+                        // Calculate speed factor: normalize to 0-1 range, then scale by 0.02
+                        const speedFactor = (pulsatingSpeed / MAX_SPEED_VALUE) * 0.02;
                         if (radiantTextEnabled) {
                             textPosition = (textPosition + speedFactor) % 1;
                         }
@@ -585,8 +592,8 @@ function updateSubtitleAppearance() {
                     break;
                 case 'stable':
                 default:
-                    const stableSpeed = lastSettings.radiantSpeed || 5;
-                    const stableSpeedFactor = (stableSpeed / 10) * 0.02;
+                    // Calculate speed factor: normalize to 0-1 range, then scale by 0.02
+                    const stableSpeedFactor = (baseSpeed / MAX_SPEED_VALUE) * 0.02;
                     radiantIntervalId = setInterval(() => {
                         if (radiantTextEnabled) {
                             textPosition = (textPosition + stableSpeedFactor) % 1;
