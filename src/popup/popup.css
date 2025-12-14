@@ -118,13 +118,37 @@ main {
 #source-container {
   flex-basis: 100%;
   display: flex;
-  gap: 15px;
+  gap: 8px;
   align-items: center;
   font-size: 13px;
 }
 
-#source-container label {
+#source-container .custom-select-wrapper {
+  flex-basis: 100%;
+}
+
+.custom-select-multiple .custom-options {
+  max-height: 200px;
+}
+
+.custom-select-multiple .custom-option {
+  padding: 8px 10px;
+}
+
+.custom-select-multiple .custom-option:hover {
+  background-color: var(--bg-color);
+}
+
+.custom-select-multiple .custom-option label {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.custom-select-multiple .source-option-checkbox {
   cursor: pointer;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
 }
 
 #search-button {

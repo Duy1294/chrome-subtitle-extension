@@ -25,7 +25,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const tabContents = document.querySelectorAll('.tab-content');
     const transcriptContainer = document.getElementById('transcript-container');
     const backButton = document.getElementById('back-button');
-    const sourceCheckboxes = document.querySelectorAll('.source-checkbox');
+    const sourceSelect = document.getElementById('source-select');
+    const sourceCheckboxes = document.querySelectorAll('.source-option-checkbox');
+    const allSourceCheckbox = document.querySelector('.source-option-checkbox[data-source="all"]');
     const moveOnPauseToggle = document.getElementById('move-on-pause-toggle');
     const backgroundStyleSelect = document.getElementById('background-style-select');
     const panelWidthRow = document.getElementById('panel-width-row');
@@ -109,6 +111,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function initializeCustomSelects() {
         document.querySelectorAll('.custom-select').forEach(selectElement => {
+            // Skip source-select as it has its own handler
+            if (selectElement.id === 'source-select') return;
+            
             selectElement.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const clickedOption = e.target.closest('.custom-option');
@@ -725,10 +730,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const savedSources = result[SELECTED_SOURCES_KEY];
             if (savedSources && savedSources.length > 0) {
                 sourceCheckboxes.forEach(cb => {
-                    cb.checked = savedSources.includes(cb.value);
+                    if (cb.dataset.source === 'all') return;
+                    cb.checked = savedSources.includes(cb.dataset.source);
                 });
+                updateAllCheckboxState();
+                updateSourceDropdownText();
             } else {
-                sourceCheckboxes.forEach(cb => cb.checked = true);
+                // Default: select all
+                sourceCheckboxes.forEach(cb => {
+                    if (cb.dataset.source !== 'all') {
+                        cb.checked = true;
+                    }
+                });
+                allSourceCheckbox.checked = true;
+                updateSourceDropdownText();
             }
 
             if (result[DEEPL_KEY_STORAGE]) {
@@ -1022,6 +1037,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Helper function to get selected sources
+    function getSelectedSources() {
+        return Array.from(sourceCheckboxes)
+            .filter(cb => cb.dataset.source !== 'all' && cb.checked)
+            .map(cb => cb.dataset.source);
+    }
+
+    // Helper function to update dropdown trigger text
+    function updateSourceDropdownText() {
+        const selectedSources = getSelectedSources();
+        const trigger = sourceSelect.querySelector('.custom-select-trigger span');
+        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles'];
+        const allSelected = allSources.every(source => selectedSources.includes(source));
+        
+        if (selectedSources.length === 0) {
+            trigger.textContent = 'Select Sources';
+        } else if (allSelected && selectedSources.length === allSources.length) {
+            trigger.textContent = 'All Sources';
+        } else {
+            trigger.textContent = `${selectedSources.length} Selected`;
+        }
+    }
+
+    // Helper function to update "All" checkbox state
+    function updateAllCheckboxState() {
+        const selectedSources = getSelectedSources();
+        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles'];
+        const allSelected = allSources.every(source => selectedSources.includes(source));
+        allSourceCheckbox.checked = allSelected && selectedSources.length === allSources.length;
+    }
+
     searchButton.addEventListener('click', async () => {
         const { [LAST_SEARCH_TIME_KEY]: lastSearchTimestamp = 0 } = await chrome.storage.local.get(LAST_SEARCH_TIME_KEY);
         const now = Date.now();
@@ -1035,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', function() {
         clearAllSubtitleState(true);
         searchResultsCache = null;
         backButton.style.display = 'none';
-        const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+        const selectedSources = getSelectedSources();
         if (selectedSources.length === 0) {
             showStatusMessage('<i>Please select at least one source.</i>', true);
             return;
@@ -1054,11 +1100,76 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    sourceCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', () => {
-            const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
-            chrome.storage.local.set({ [SELECTED_SOURCES_KEY]: selectedSources });
-        });
+    // Initialize source dropdown - prevent closing when clicking on options
+    sourceSelect.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const clickedOption = e.target.closest('.custom-option');
+        const clickedCheckbox = e.target.closest('.source-option-checkbox');
+        const clickedLabel = e.target.closest('label');
+        
+        // If clicking on trigger, toggle dropdown
+        if (e.target.closest('.custom-select-trigger')) {
+            closeAllSelects(this);
+            this.classList.toggle('open');
+            return;
+        }
+        
+        // If clicking on checkbox or label, handle selection but don't close dropdown
+        if (clickedCheckbox || clickedLabel) {
+            const checkbox = clickedCheckbox || clickedLabel.querySelector('.source-option-checkbox');
+            if (checkbox) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Handle "All" checkbox
+                if (checkbox.dataset.source === 'all') {
+                    const allSources = ['jimaku', 'kitsunekko', 'opensubtitles'];
+                    const allSelected = allSources.every(source => {
+                        const cb = document.querySelector(`.source-option-checkbox[data-source="${source}"]`);
+                        return cb && cb.checked;
+                    });
+                    
+                    if (allSelected) {
+                        // Unselect all
+                        sourceCheckboxes.forEach(cb => {
+                            if (cb.dataset.source !== 'all') {
+                                cb.checked = false;
+                            }
+                        });
+                        checkbox.checked = false;
+                    } else {
+                        // Select all
+                        sourceCheckboxes.forEach(cb => {
+                            if (cb.dataset.source !== 'all') {
+                                cb.checked = true;
+                            }
+                        });
+                        checkbox.checked = true;
+                    }
+                } else {
+                    // Toggle individual checkbox
+                    checkbox.checked = !checkbox.checked;
+                }
+                
+                // Update states
+                updateAllCheckboxState();
+                updateSourceDropdownText();
+                
+                // Save selected sources
+                const selectedSources = getSelectedSources();
+                chrome.storage.local.set({ [SELECTED_SOURCES_KEY]: selectedSources });
+            }
+            return;
+        }
+        
+        // If clicking elsewhere in option, do nothing (prevent closing)
+        if (clickedOption) {
+            return;
+        }
+        
+        // Close dropdown if clicking outside
+        closeAllSelects(this);
+        this.classList.remove('open');
     });
 
     applyBtn.addEventListener('click', () => applySettingsFromPanel(false));

@@ -24,9 +24,37 @@
         <div class="search-container">
           <input id="search-input" type="text" placeholder="Enter anime name...">
           <div id="source-container">
-            <label><input type="checkbox" class="source-checkbox" value="jimaku"> Jimaku</label>
-            <label><input type="checkbox" class="source-checkbox" value="kitsunekko"> Kitsunekko</label>
-            <label><input type="checkbox" class="source-checkbox" value="opensubtitles"> OpenSubtitles</label>
+            <div class="custom-select-wrapper" style="flex-basis: 100%;">
+              <div id="source-select" class="custom-select custom-select-multiple">
+                <div class="custom-select-trigger"><span>Select Sources</span></div>
+                <div class="custom-options">
+                  <div class="custom-option" data-source="all" data-all-btn="true">
+                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                      <input type="checkbox" class="source-option-checkbox" data-source="all" style="margin-right: 8px;">
+                      <span>All</span>
+                    </label>
+                  </div>
+                  <div class="custom-option" data-source="jimaku">
+                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                      <input type="checkbox" class="source-option-checkbox" data-source="jimaku" style="margin-right: 8px;">
+                      <span>Jimaku</span>
+                    </label>
+                  </div>
+                  <div class="custom-option" data-source="kitsunekko">
+                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                      <input type="checkbox" class="source-option-checkbox" data-source="kitsunekko" style="margin-right: 8px;">
+                      <span>Kitsunekko</span>
+                    </label>
+                  </div>
+                  <div class="custom-option" data-source="opensubtitles">
+                    <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                      <input type="checkbox" class="source-option-checkbox" data-source="opensubtitles" style="margin-right: 8px;">
+                      <span>OpenSubtitles</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <button id="search-button">Search</button>
         </div>
