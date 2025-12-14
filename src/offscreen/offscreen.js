@@ -33,6 +33,90 @@ window.addEventListener('load', function() {
         return results;
     }
 
+    function parseSubscene(doc, query) {
+        const results = [];
+        const seenUrls = new Set();
+        
+        // Structure 1: Search results page with .search-result sections
+        // HTML structure: <div class="search-result"><h2>Exact</h2><ul><li><div class="title"><a href="/subscene/ID">Title</a></div><div class="subtle count">X subtitles</div></li></ul></div>
+        const searchResultDiv = doc.querySelector('.search-result');
+        if (searchResultDiv) {
+            const listItems = searchResultDiv.querySelectorAll('ul li');
+            listItems.forEach((item) => {
+                const titleLink = item.querySelector('div.title a');
+                if (titleLink) {
+                    const title = titleLink.textContent.trim();
+                    const href = titleLink.getAttribute('href');
+                    const countDiv = item.querySelector('div.subtle.count');
+                    const count = countDiv ? countDiv.textContent.trim() : '';
+                    
+                    if (title && href && href.includes('/subscene/')) {
+                        const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://sub-scene.com').href;
+                        if (!seenUrls.has(fullUrl)) {
+                            seenUrls.add(fullUrl);
+                            results.push({
+                                title: title,
+                                url: fullUrl,
+                                source: 'Subscene',
+                                isMovie: true,
+                                subtitleCount: count
+                            });
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Structure 2: Popular films structure (from homepage/browse pages)
+        if (results.length === 0) {
+            const popularItems = doc.querySelectorAll('.popular-films .box .details li, .box .details li, .details li');
+            popularItems.forEach((item) => {
+                const titleLink = item.querySelector('div.title a, .title a, a[href*="/subscene/"]');
+                if (titleLink) {
+                    const title = titleLink.textContent.trim();
+                    const href = titleLink.getAttribute('href');
+                    if (title && href && href.includes('/subscene/')) {
+                        const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://sub-scene.com').href;
+                        if (!seenUrls.has(fullUrl)) {
+                            seenUrls.add(fullUrl);
+                            results.push({
+                                title: title,
+                                url: fullUrl,
+                                source: 'Subscene',
+                                isMovie: true
+                            });
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Structure 3: Direct links to /subscene/ pages (but exclude /subtitle/ links)
+        if (results.length === 0) {
+            const allLinks = doc.querySelectorAll('a[href*="/subscene/"]');
+            allLinks.forEach((link) => {
+                const href = link.getAttribute('href');
+                if (href && href.includes('/subscene/') && !href.includes('/subtitle/')) {
+                    const title = link.textContent.trim();
+                    if (title && title.length > 0 && title.length < 200) {
+                        const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://sub-scene.com').href;
+                        if (!seenUrls.has(fullUrl)) {
+                            seenUrls.add(fullUrl);
+                            results.push({
+                                title: title,
+                                url: fullUrl,
+                                source: 'Subscene',
+                                isMovie: true
+                            });
+                        }
+                    }
+                }
+            });
+        }
+        
+        return results;
+    }
+
     function parseOpenSubtitles(doc, query) {
         const results = [];
         // Check if this is a subtitle list page (has subtitle rows with flags) or a movie list page
@@ -534,6 +618,92 @@ window.addEventListener('load', function() {
                     results.push({ title, url: new URL(link.getAttribute('href'), baseUrl).href, source: 'Kitsunekko' });
                 }
             });
+        } else if (source === 'subscene') {
+            // Subscene subtitle list page structure:
+            // <table><tbody><tr>
+            //   <td class="a1">
+            //     <a href="/subtitle/ID">
+            //       <div>
+            //         <span class="l r neutral-icon">Language</span>
+            //         <span class="new">Title/Release Name</span>
+            //       </div>
+            //     </a>
+            //   </td>
+            //   ...
+            // </tr></tbody></table>
+            const subtitleRows = doc.querySelectorAll('table tbody tr');
+            subtitleRows.forEach((row) => {
+                const linkCell = row.querySelector('td.a1');
+                if (!linkCell) return;
+                
+                const link = linkCell.querySelector('a[href*="/subtitle/"]');
+                if (!link) return;
+                
+                const href = link.getAttribute('href');
+                if (!href) return;
+                
+                // Extract language from span.l.r
+                const langSpan = link.querySelector('span.l.r');
+                let language = null;
+                if (langSpan) {
+                    const langText = langSpan.textContent.trim();
+                    // Map language names to normalized format
+                    const langMap = {
+                        'Arabic': 'arabic',
+                        'Bengali': 'bengali',
+                        'Big 5 code': 'chinese',
+                        'Burmese': 'burmese',
+                        'Chinese BG code': 'chinese',
+                        'Danish': 'danish',
+                        'Dutch': 'dutch',
+                        'English': 'english',
+                        'Farsi/Persian': 'persian',
+                        'Finnish': 'finnish',
+                        'French': 'french',
+                        'German': 'german',
+                        'Greek': 'greek',
+                        'Indonesian': 'indonesian',
+                        'Italian': 'italian',
+                        'Japanese': 'japanese',
+                        'Kannada': 'kannada',
+                        'Korean': 'korean',
+                        'Malay': 'malay',
+                        'Malayalam': 'malayalam',
+                        'Norwegian': 'norwegian',
+                        'Polish': 'polish',
+                        'Portuguese': 'portuguese',
+                        'Spanish': 'spanish',
+                        'Swedish': 'swedish',
+                        'Thai': 'thai',
+                        'Turkish': 'turkish',
+                        'Ukrainian': 'ukrainian',
+                        'Vietnamese': 'vietnamese'
+                    };
+                    language = langMap[langText] || langText.toLowerCase();
+                }
+                
+                // Extract title from span.new
+                const titleSpan = link.querySelector('span.new');
+                let title = null;
+                if (titleSpan) {
+                    title = titleSpan.textContent.trim();
+                } else {
+                    // Fallback to link text
+                    title = link.textContent.trim();
+                }
+                
+                if (title && href) {
+                    const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://sub-scene.com').href;
+                    results.push({
+                        title: title,
+                        url: fullUrl,
+                        source: 'Subscene',
+                        language: language,
+                        isDirectDownload: false, // Subscene links go to detail page first
+                        format: null
+                    });
+                }
+            });
         }
         // Don't sort - keep results in original order from source
         return results;
@@ -636,6 +806,42 @@ window.addEventListener('load', function() {
             return 'japanese'; // These sources are primarily Japanese
         }
         
+        if (source === 'subscene') {
+            // Subscene URLs might have language info in path
+            // Example: /subtitles/english/... or /subtitles/japanese/...
+            if (url) {
+                const urlLower = url.toLowerCase();
+                const langMatch = urlLower.match(/\/subtitles\/([a-z]{2,3})\//);
+                if (langMatch) {
+                    const langCode = langMatch[1];
+                    const langCodeMap = {
+                        'eng': 'english', 'en': 'english',
+                        'jpn': 'japanese', 'ja': 'japanese',
+                        'ger': 'german', 'de': 'german',
+                        'fre': 'french', 'fr': 'french',
+                        'spa': 'spanish', 'es': 'spanish',
+                        'vie': 'vietnamese', 'vi': 'vietnamese',
+                        'ara': 'arabic', 'ar': 'arabic',
+                        'chi': 'chinese', 'zh': 'chinese',
+                        'kor': 'korean', 'ko': 'korean',
+                        'ita': 'italian', 'it': 'italian',
+                        'por': 'portuguese', 'pt': 'portuguese',
+                        'rus': 'russian', 'ru': 'russian',
+                        'tha': 'thai', 'th': 'thai',
+                        'ind': 'indonesian', 'id': 'indonesian',
+                        'tur': 'turkish', 'tr': 'turkish',
+                        'pol': 'polish', 'pl': 'polish',
+                        'dut': 'dutch', 'nl': 'dutch',
+                        'swe': 'swedish', 'sv': 'swedish'
+                    };
+                    const detected = langCodeMap[langCode];
+                    if (detected) {
+                        return detected;
+                    }
+                }
+            }
+        }
+        
         return null; // Unknown language - don't default to English
     }
 
@@ -721,6 +927,49 @@ window.addEventListener('load', function() {
             return true;
         }
         
+        if (request.action === 'extractSubsceneDownloadLink') {
+            const { htmlText, baseUrl } = request;
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, "text/html");
+            let downloadUrl = null;
+            
+            // Method 1: Look for download button/link
+            const downloadButton = doc.querySelector('a.button[href*="/download/"]');
+            if (downloadButton) {
+                const href = downloadButton.getAttribute('href');
+                if (href) {
+                    downloadUrl = href.startsWith('http') ? href : new URL(href, 'https://sub-scene.com').href;
+                }
+            }
+            
+            // Method 2: Look for any download link
+            if (!downloadUrl) {
+                const downloadLinks = doc.querySelectorAll('a[href*="/download/"]');
+                for (const link of downloadLinks) {
+                    const href = link.getAttribute('href');
+                    if (href && href.includes('/download/')) {
+                        downloadUrl = href.startsWith('http') ? href : new URL(href, 'https://sub-scene.com').href;
+                        break;
+                    }
+                }
+            }
+            
+            // Method 3: Extract subtitle ID from URL and construct download link
+            if (!downloadUrl) {
+                const subtitleIdMatch = baseUrl.match(/\/subtitle\/(\d+)/);
+                if (subtitleIdMatch) {
+                    const subtitleId = subtitleIdMatch[1];
+                    downloadUrl = `https://sub-scene.com/download/${subtitleId}`;
+                }
+            }
+            
+            chrome.runtime.sendMessage({ 
+                action: 'downloadLinkExtracted', 
+                downloadUrl: downloadUrl 
+            });
+            return true;
+        }
+        
         if (request.action === 'extractPaginationLinks') {
             const { htmlText, baseUrl } = request;
             const parser = new DOMParser();
@@ -774,7 +1023,7 @@ window.addEventListener('load', function() {
             const parser = new DOMParser();
             const moviePagesToFetch = []; // Store movie pages that need to be fetched
             
-            pages.forEach(page => {
+            pages.forEach((page, pageIndex) => {
                 const doc = parser.parseFromString(page.htmlText, "text/html");
                 let pageResults = [];
                 if (page.source === 'jimaku') {
@@ -799,6 +1048,14 @@ window.addEventListener('load', function() {
                         const detectedLang = detectLanguage(result.title, result.url, page.source);
                         return { ...result, language: detectedLang, isMovie: false };
                     });
+                } else if (page.source === 'subscene') {
+                    pageResults = parseSubscene(doc, page.query);
+                    // Subscene search results are always movie/show pages, so mark them as movies
+                    pageResults = pageResults.map(result => ({
+                        ...result,
+                        isMovie: true,
+                        language: null
+                    }));
                 } else {
                     // Add language detection to each result for other sources
                     pageResults = pageResults.map(result => {
@@ -887,10 +1144,6 @@ window.addEventListener('load', function() {
                             throw new Error('Empty or invalid subtitle file.');
                         }
                         
-                        console.log('Processing subtitle content, length:', cleanedText.length);
-                        console.log('File extension:', fileExtension);
-                        console.log('First 200 chars:', cleanedText.substring(0, 200));
-                        
                         // Determine format from file extension (not auto-detect)
                         let format = 'srt'; // default
                         const ext = fileExtension.toLowerCase().replace(/^\./, ''); // Remove leading dot if present
@@ -903,8 +1156,6 @@ window.addEventListener('load', function() {
                         } else if (ext === 'sub') {
                             format = 'sub';
                         }
-                        
-                        console.log('Using format:', format);
                         
                         // Parse with explicit format based on file extension
                         let captions;
@@ -920,8 +1171,6 @@ window.addEventListener('load', function() {
                             throw new Error('No captions found in subtitle file.');
                         }
                         
-                        console.log('Parsed captions count:', captions.length);
-                        
                         const cleanedCaptions = captions.map(caption => {
                             if (!caption.text) return caption;
                             caption.text = caption.text.replace(/{[^}]+}/g, '');
@@ -936,7 +1185,6 @@ window.addEventListener('load', function() {
                             throw new Error('Generated SRT content is empty.');
                         }
                         
-                        console.log('Sending unzippedSubtitleReady, content length:', srtContent.length);
                         chrome.runtime.sendMessage({ action: 'unzippedSubtitleReady', data: srtContent });
                     } catch (error) {
                         console.error("Subsrt parsing/building error:", error);
@@ -979,7 +1227,7 @@ window.addEventListener('load', function() {
                         const text = await response.clone().text();
                         if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
                         throw new Error('File is an HTML page, not a subtitle file.');
-                        }
+                    }
                     }
                     
                     const buffer = await response.arrayBuffer();
@@ -993,60 +1241,31 @@ window.addEventListener('load', function() {
                         const data = await response.arrayBuffer();
                         const zip = await JSZip.loadAsync(data);
                         
-                        // Log all files in ZIP
+                        // Find subtitle file in ZIP
                         const allFilesInZip = Object.keys(zip.files);
-                        console.log('=== ZIP EXTRACTION DEBUG ===');
-                        console.log('Total entries in ZIP:', allFilesInZip.length);
-                        console.log('All files/folders in ZIP:');
-                        allFilesInZip.forEach((fileName, index) => {
-                            const file = zip.files[fileName];
-                            const isDir = file.dir;
-                            const size = isDir ? 'DIR' : (file._data ? file._data.uncompressedSize : 'unknown');
-                            console.log(`  [${index + 1}] ${fileName} (${isDir ? 'DIRECTORY' : 'FILE'}, size: ${size})`);
-                        });
-                        
                         let subtitleEntry = null;
                         let fileExtension = 'srt'; // default
                         
                         // Supported subtitle file extensions (in priority order)
                         const supportedExtensions = ['.srt', '.ass', '.ssa', '.vtt', '.sub'];
                         
-                        console.log('Searching for subtitle files with extensions:', supportedExtensions);
-                        
                         // Find first file with supported extension
                         for (const ext of supportedExtensions) {
-                            console.log(`  Checking for ${ext} files...`);
                             for (const fileName of Object.keys(zip.files)) {
                                 const file = zip.files[fileName];
                                 const lowerCaseName = file.name.toLowerCase();
                                 if (!file.dir && lowerCaseName.endsWith(ext) && !lowerCaseName.startsWith('__macosx')) {
                                     subtitleEntry = file;
                                     fileExtension = ext; // Store the extension found
-                                    console.log(`  ✓ Found ${ext} file: ${fileName}`);
                                     break;
                                 }
                             }
-                            if (subtitleEntry) {
-                                console.log(`  → Selected file: ${subtitleEntry.name} with extension: ${fileExtension}`);
-                                break;
-                            } else {
-                                console.log(`  ✗ No ${ext} file found`);
-                            }
+                            if (subtitleEntry) break;
                         }
 
                         if (subtitleEntry) {
-                            console.log('=== SELECTED FILE INFO ===');
-                            console.log('File name:', subtitleEntry.name);
-                            console.log('File extension:', fileExtension);
-                            console.log('File path in ZIP:', subtitleEntry.name);
                             const buffer = await subtitleEntry.async('arraybuffer');
-                            console.log('Extracted buffer size:', buffer.byteLength, 'bytes');
                             const text = await decodeWithFallback(buffer);
-                            console.log('Decoded text length:', text.length, 'characters');
-                            console.log('First 300 characters of decoded text:');
-                            console.log(text.substring(0, 300));
-                            console.log('=== END ZIP DEBUG ===');
-                            // Pass file extension to processSubtitleContent
                             processSubtitleContent(text, fileExtension);
                         } else {
                             // List all files in zip for debugging
@@ -1090,7 +1309,6 @@ window.addEventListener('load', function() {
                                     break;
                                 }
                             }
-                            console.log('Found subtitle file in archive:', subtitleFile.name, 'extension:', fileExtension);
                             const fileBuffer = await subtitleFile.arrayBuffer();
                             const text = await decodeWithFallback(fileBuffer);
                             processSubtitleContent(text, fileExtension);
@@ -1099,13 +1317,11 @@ window.addEventListener('load', function() {
                         }
                     } else {
                         // For direct file download, first check if it's actually a ZIP file
-                        console.log('Direct file download, checking file type...');
                         const response = await fetch(url);
                         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                         
                         // Check content-type header
                         const contentType = response.headers.get('content-type') || '';
-                        console.log('Content-Type:', contentType);
                         
                         // Read first few bytes to check for ZIP signature
                         const buffer = await response.arrayBuffer();
@@ -1113,63 +1329,32 @@ window.addEventListener('load', function() {
                         const isZipFile = firstBytes[0] === 0x50 && firstBytes[1] === 0x4B && 
                                          (firstBytes[2] === 0x03 || firstBytes[2] === 0x05 || firstBytes[2] === 0x07);
                         
-                        console.log('First bytes (hex):', Array.from(firstBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-                        console.log('Is ZIP file (PK signature):', isZipFile);
-                        
                         if (isZipFile || contentType.includes('zip') || contentType.includes('application/zip')) {
                             // It's actually a ZIP file, process it as ZIP
-                            console.log('File is ZIP, processing as ZIP archive...');
                             const zip = await JSZip.loadAsync(buffer);
                             
-                            // Log all files in ZIP
+                            // Find subtitle file in ZIP
                             const allFilesInZip = Object.keys(zip.files);
-                            console.log('=== ZIP EXTRACTION DEBUG (from direct download) ===');
-                            console.log('Total entries in ZIP:', allFilesInZip.length);
-                            console.log('All files/folders in ZIP:');
-                            allFilesInZip.forEach((fileName, index) => {
-                                const file = zip.files[fileName];
-                                const isDir = file.dir;
-                                const size = isDir ? 'DIR' : (file._data ? file._data.uncompressedSize : 'unknown');
-                                console.log(`  [${index + 1}] ${fileName} (${isDir ? 'DIRECTORY' : 'FILE'}, size: ${size})`);
-                            });
-                            
                             let subtitleEntry = null;
                             let fileExtension = 'srt';
                             const supportedExtensions = ['.srt', '.ass', '.ssa', '.vtt', '.sub'];
                             
-                            console.log('Searching for subtitle files with extensions:', supportedExtensions);
-                            
                             for (const ext of supportedExtensions) {
-                                console.log(`  Checking for ${ext} files...`);
                                 for (const fileName of Object.keys(zip.files)) {
                                     const file = zip.files[fileName];
                                     const lowerCaseName = file.name.toLowerCase();
                                     if (!file.dir && lowerCaseName.endsWith(ext) && !lowerCaseName.startsWith('__macosx')) {
                                         subtitleEntry = file;
                                         fileExtension = ext;
-                                        console.log(`  ✓ Found ${ext} file: ${fileName}`);
                                         break;
                                     }
                                 }
-                                if (subtitleEntry) {
-                                    console.log(`  → Selected file: ${subtitleEntry.name} with extension: ${fileExtension}`);
-                                    break;
-                                } else {
-                                    console.log(`  ✗ No ${ext} file found`);
-                                }
+                                if (subtitleEntry) break;
                             }
-                            
+
                             if (subtitleEntry) {
-                                console.log('=== SELECTED FILE INFO ===');
-                                console.log('File name:', subtitleEntry.name);
-                                console.log('File extension:', fileExtension);
                                 const fileBuffer = await subtitleEntry.async('arraybuffer');
-                                console.log('Extracted buffer size:', fileBuffer.byteLength, 'bytes');
                                 const text = await decodeWithFallback(fileBuffer);
-                                console.log('Decoded text length:', text.length, 'characters');
-                                console.log('First 300 characters of decoded text:');
-                                console.log(text.substring(0, 300));
-                                console.log('=== END ZIP DEBUG ===');
                                 processSubtitleContent(text, fileExtension);
                             } else {
                                 const allFiles = Object.keys(zip.files).filter(name => !zip.files[name].dir);

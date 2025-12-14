@@ -29,6 +29,7 @@ const searchSources = {
   jimaku: { url: 'https://jimaku.cc/', method: 'GET' },
   kitsunekko: { url: 'https://kitsunekko.net/dirlist.php?dir=subtitles/japanese/', method: 'GET' },
   opensubtitles: { url: 'https://www.opensubtitles.org/en/search2/', method: 'GET' },
+  subscene: { url: 'https://sub-scene.com/search', method: 'GET' },
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -54,10 +55,112 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             // Also handle already-encoded + signs (if any)
             normalizedQuery = normalizedQuery.replace(/%2B/gi, '+');
             url += `moviename-${normalizedQuery}/sublanguageid-all`;
+        } else if (sourceKey === 'subscene') {
+            // Subscene search URL format: https://sub-scene.com/search?query=your+name
+            const encodedQuery = encodeURIComponent(query.trim()).replace(/%20/g, '+');
+            url += `?query=${encodedQuery}`;
         }
-        const fetchOptions = {};
-        const firstPageHtml = await fetchWithTimeout(url, fetchOptions)
-          .then(response => response.ok ? response.text() : Promise.reject(new Error(`Failed fetch from ${sourceKey}: ${response.status}`)));
+        // Build fetch options with proper headers
+        const fetchOptions = {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0'
+          }
+        };
+        
+        // For subscene, try using tabs API as fallback if fetch fails (to bypass Cloudflare)
+        let firstPageHtml;
+        if (sourceKey === 'subscene') {
+          try {
+            // First try normal fetch
+            fetchOptions.headers['Referer'] = 'https://sub-scene.com/';
+            fetchOptions.headers['Origin'] = 'https://sub-scene.com';
+            fetchOptions.headers['Sec-Fetch-Site'] = 'same-origin';
+        const response = await fetchWithTimeout(url, fetchOptions);
+            if (response.ok) {
+              firstPageHtml = await response.text();
+            } else if (response.status === 403) {
+              // If 403, try using tabs API as fallback
+              throw new Error('403_FALLBACK_TO_TABS');
+            } else {
+              throw new Error(`Failed fetch from ${sourceKey}: ${response.status} ${response.statusText}`);
+            }
+          } catch (error) {
+            if (error.message === '403_FALLBACK_TO_TABS') {
+              // Try using tabs API to load page in browser context
+              try {
+                const tab = await chrome.tabs.create({ url: url, active: false });
+                // Wait for page to load
+                await new Promise((resolve) => {
+                  const listener = (tabId, changeInfo) => {
+                    if (tabId === tab.id && changeInfo.status === 'complete') {
+                      chrome.tabs.onUpdated.removeListener(listener);
+                      resolve();
+                    }
+                  };
+                  chrome.tabs.onUpdated.addListener(listener);
+                  // Timeout after 10 seconds
+                  setTimeout(() => {
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    resolve();
+                  }, 10000);
+                });
+                // Execute script to get HTML
+                const results = await chrome.scripting.executeScript({
+                  target: { tabId: tab.id },
+                  func: () => document.documentElement.outerHTML
+                });
+                if (results && results[0] && results[0].result) {
+                  firstPageHtml = results[0].result;
+                } else {
+                  throw new Error('Failed to get HTML from tab');
+                }
+                // Close the tab
+                chrome.tabs.remove(tab.id);
+              } catch (tabsError) {
+                console.error('[Subscene] Tabs API fallback also failed:', tabsError);
+                chrome.tabs.remove(tab.id).catch(() => {});
+                throw new Error(`Failed fetch from ${sourceKey}: 403 Forbidden (Cloudflare protection)`);
+              }
+            } else {
+              console.error(`[${sourceKey}] Fetch error:`, error);
+              console.error(`[${sourceKey}] Error details:`, {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+              });
+              throw error;
+            }
+          }
+        } else {
+          // Normal fetch for other sources
+          firstPageHtml = await fetchWithTimeout(url, fetchOptions)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`Failed fetch from ${sourceKey}: ${response.status} ${response.statusText}`);
+              }
+              return response.text();
+            })
+            .catch(error => {
+              console.error(`[${sourceKey}] Fetch error:`, error);
+              console.error(`[${sourceKey}] Error details:`, {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+              });
+              throw error;
+            });
+        }
         
         // For OpenSubtitles, check for pagination and fetch all pages
         if (sourceKey === 'opensubtitles') {
@@ -112,7 +215,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await getOrCreateOffscreenDocument();
         const successfulPages = [];
         const fetchErrors = [];
-        results.forEach(result => {
+        results.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             // result.value is now an array of pages (for OpenSubtitles) or single page array (for others)
             if (Array.isArray(result.value)) {
@@ -121,12 +224,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               successfulPages.push(result.value);
             }
           } else {
-            const errorMessage = result.reason.message || 'Unknown fetch error';
+            const errorMessage = result.reason?.message || result.reason?.toString() || 'Unknown fetch error';
+            console.error(`[Background] Fetch error for result ${index}:`, errorMessage, result.reason);
             let sourceName = 'a source';
-            if (errorMessage.includes('jimaku')) sourceName = 'Jimaku';
-            else if (errorMessage.includes('kitsunekko')) sourceName = 'Kitsunekko';
-            else if (errorMessage.includes('opensubtitles')) sourceName = 'OpenSubtitles';
-            fetchErrors.push(`Failed to fetch from ${sourceName}.`);
+            let errorDetail = '';
+            const errorLower = errorMessage.toLowerCase();
+            if (errorLower.includes('jimaku')) {
+              sourceName = 'Jimaku';
+            } else if (errorLower.includes('kitsunekko')) {
+              sourceName = 'Kitsunekko';
+            } else if (errorLower.includes('opensubtitles')) {
+              sourceName = 'OpenSubtitles';
+            } else if (errorLower.includes('subscene')) {
+              sourceName = 'Subscene';
+              // Check if it's a 403 error (Cloudflare protection)
+              if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+                errorDetail = ' (Blocked by Cloudflare protection - may work if accessed directly in browser)';
+              }
+            }
+            fetchErrors.push(`Failed to fetch from ${sourceName}${errorDetail}.`);
           }
         });
         chrome.runtime.sendMessage({
@@ -250,6 +366,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.url.includes('kitsunekko.net')) source = 'kitsunekko';
         else if (request.url.includes('jimaku.cc')) source = 'jimaku';
         else if (request.url.includes('opensubtitles.org')) source = 'opensubtitles';
+        else if (request.url.includes('sub-scene.com')) source = 'subscene';
         
         // For OpenSubtitles, check for pagination and fetch all subtitle pages
         if (source === 'opensubtitles') {
@@ -390,6 +507,116 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 chrome.runtime.sendMessage({ 
                     action: 'showStatus', 
                     message: `<i>Error: Could not load OpenSubtitles page: ${error.message}</i>` 
+                });
+            }
+        } else if (request.url.includes('sub-scene.com') && request.url.includes('/subtitle/')) {
+            // This is a Subscene detail page, need to fetch HTML and extract download link
+            try {
+                let htmlText;
+                // Try normal fetch first
+                try {
+                    const fetchOptions = {
+                        method: 'GET',
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.5',
+                            'Referer': 'https://sub-scene.com/',
+                            'Origin': 'https://sub-scene.com'
+                        }
+                    };
+                    const response = await fetchWithTimeout(request.url, fetchOptions, 15000);
+                    if (response.ok) {
+                        htmlText = await response.text();
+                    } else if (response.status === 403) {
+                        // Try tabs API fallback
+                        const tab = await chrome.tabs.create({ url: request.url, active: false });
+                        await new Promise((resolve) => {
+                            const listener = (tabId, changeInfo) => {
+                                if (tabId === tab.id && changeInfo.status === 'complete') {
+                                    chrome.tabs.onUpdated.removeListener(listener);
+                                    resolve();
+                                }
+                            };
+                            chrome.tabs.onUpdated.addListener(listener);
+                            setTimeout(() => {
+                                chrome.tabs.onUpdated.removeListener(listener);
+                                resolve();
+                            }, 10000);
+                        });
+                        const results = await chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            func: () => document.documentElement.outerHTML
+                        });
+                        htmlText = results[0].result;
+                        await chrome.tabs.remove(tab.id);
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                } catch (error) {
+                    // Try tabs API fallback
+                    const tab = await chrome.tabs.create({ url: request.url, active: false });
+                    await new Promise((resolve) => {
+                        const listener = (tabId, changeInfo) => {
+                            if (tabId === tab.id && changeInfo.status === 'complete') {
+                                chrome.tabs.onUpdated.removeListener(listener);
+                                resolve();
+                            }
+                        };
+                        chrome.tabs.onUpdated.addListener(listener);
+                        setTimeout(() => {
+                            chrome.tabs.onUpdated.removeListener(listener);
+                            resolve();
+                        }, 10000);
+                    });
+                    const results = await chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        func: () => document.documentElement.outerHTML
+                    });
+                    htmlText = results[0].result;
+                    await chrome.tabs.remove(tab.id);
+                }
+                
+                await getOrCreateOffscreenDocument();
+                
+                // Extract download link from HTML
+                const downloadLink = await new Promise((resolve) => {
+                    const listener = (msg) => {
+                        if (msg.action === 'downloadLinkExtracted') {
+                            chrome.runtime.onMessage.removeListener(listener);
+                            resolve(msg.downloadUrl || null);
+                        }
+                    };
+                    chrome.runtime.onMessage.addListener(listener);
+                    chrome.runtime.sendMessage({
+                        action: 'extractSubsceneDownloadLink',
+                        htmlText: htmlText,
+                        baseUrl: request.url
+                    });
+                    setTimeout(() => {
+                        chrome.runtime.onMessage.removeListener(listener);
+                        resolve(null);
+                    }, 5000);
+                });
+                
+                if (downloadLink) {
+                    // Use the extracted download link
+                    chrome.runtime.sendMessage({
+                        action: 'fetchAndProcessFile',
+                        url: downloadLink,
+                        format: request.format || 'zip' // Default to zip for Subscene
+                    });
+                } else {
+                    chrome.runtime.sendMessage({ 
+                        action: 'showStatus', 
+                        message: `<i>Error: Could not find download link on Subscene page.</i>` 
+                    });
+                }
+            } catch (error) {
+                console.error(`Error fetching Subscene detail page:`, error);
+                chrome.runtime.sendMessage({ 
+                    action: 'showStatus', 
+                    message: `<i>Error: Could not load Subscene page: ${error.message}</i>` 
                 });
             }
         } else {

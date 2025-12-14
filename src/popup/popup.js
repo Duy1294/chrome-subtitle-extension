@@ -432,8 +432,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function loadSubData(srtText, isAppending = false) {
-        console.log('Popup: loadSubData called, isAppending:', isAppending, 'textLength:', srtText ? srtText.length : 0);
-        
         if (!srtText || srtText.trim() === '') {
             console.error('Popup: Empty subtitle text received');
             showStatusMessage(`<i style="color: var(--danger-color);">Error: Empty subtitle file.</i>`);
@@ -446,7 +444,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const newSubText = existingSub.data ? (existingSub.data + '\n\n' + srtText) : srtText;
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: newSubText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(newSubText);
-            console.log('Popup: Parsed transcript subtitles count:', transcriptSubtitles.length);
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs[0] && tabs[0].id) {
                     chrome.tabs.sendMessage(tabs[0].id, { action: 'displaySubtitles', settings: getSettingsFromPanel(), data: srtText, format: 'srt', append: true });
@@ -456,7 +453,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             await chrome.storage.session.set({ [SESSION_SUB_KEY]: { data: srtText, isNew: false } });
             transcriptSubtitles = parseSrtForTranscript(srtText);
-            console.log('Popup: Parsed transcript subtitles count:', transcriptSubtitles.length);
             
             if (transcriptSubtitles.length === 0) {
                 console.error('Popup: No subtitles parsed from text');
@@ -931,6 +927,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 sourceText = 'JIMAKU';
             } else if (sourceText.toLowerCase() === 'kitsunekko') {
                 sourceText = 'KITSUNEKKO';
+            } else if (sourceText.toLowerCase() === 'subscene') {
+                sourceText = 'SUBSCENE';
             } else {
                 sourceText = sourceText.toUpperCase();
             }
@@ -1222,24 +1220,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        console.log('handleEpisodeClick: URL:', episodeItem.url);
-        console.log('handleEpisodeClick: Detected format:', format);
-        
         chrome.runtime.sendMessage({ action: 'fetchSubtitleContent', url: episodeItem.url, format: format });
     }
     
     async function checkAndLoadSessionSubtitle() {
-        console.log('Popup: checkAndLoadSessionSubtitle called');
         const result = await chrome.storage.session.get(SESSION_SUB_KEY);
-        console.log('Popup: Session data:', result[SESSION_SUB_KEY] ? { isNew: result[SESSION_SUB_KEY].isNew, dataLength: result[SESSION_SUB_KEY].data ? result[SESSION_SUB_KEY].data.length : 0 } : 'null');
         if (result[SESSION_SUB_KEY] && result[SESSION_SUB_KEY].isNew) {
             const subData = result[SESSION_SUB_KEY];
             const isAppending = (await chrome.storage.session.get(SESSION_APPEND_KEY))[SESSION_APPEND_KEY] || false;
             await chrome.storage.session.remove(SESSION_APPEND_KEY);
-            console.log('Popup: Loading subtitle data, isAppending:', isAppending);
             await loadSubData(subData.data, isAppending);
-        } else {
-            console.log('Popup: No new subtitle data found in session');
         }
     }
 
@@ -1392,7 +1382,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateSourceDropdownText() {
         const selectedSources = getSelectedSources();
         const trigger = sourceSelect.querySelector('.custom-select-trigger span');
-        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles'];
+        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene'];
         const allSelected = allSources.every(source => selectedSources.includes(source));
         
         if (selectedSources.length === 0) {
@@ -1407,7 +1397,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Helper function to update "All" checkbox state
     function updateAllCheckboxState() {
         const selectedSources = getSelectedSources();
-        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles'];
+        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene'];
         const allSelected = allSources.every(source => selectedSources.includes(source));
         allSourceCheckbox.checked = allSelected && selectedSources.length === allSources.length;
     }
@@ -1435,7 +1425,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const language = languageSelect.dataset.value || 'all';
         showStatusMessage('<i>Searching...</i>');
         saveSearchHistory(query);
-        chrome.runtime.sendMessage({ action: 'search', query: query, sources: selectedSources, language: language });
+        chrome.runtime.sendMessage({ action: 'search', query: query, sources: selectedSources, language: language })
+            .catch(error => {
+                console.error('[Popup] Error sending search message:', error);
+                showStatusMessage(`<i>Error: ${error.message || 'Failed to send search request'}</i>`, true);
+            });
     });
 
     searchInput.addEventListener('keydown', function(event) {
@@ -1471,7 +1465,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Handle "All" checkbox
                 if (checkbox.dataset.source === 'all') {
-                    const allSources = ['jimaku', 'kitsunekko', 'opensubtitles'];
+                    const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene'];
                     const allSelected = allSources.every(source => {
                         const cb = document.querySelector(`.source-option-checkbox[data-source="${source}"]`);
                         return cb && cb.checked;
@@ -1578,6 +1572,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+        console.log('[Popup] Received message:', request.action, request);
         if (request.action === 'searchResults') {
             // Store all results (unfiltered)
             allSearchResults = request.data || [];
