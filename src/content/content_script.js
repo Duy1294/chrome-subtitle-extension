@@ -12,6 +12,33 @@ let initialBottomPercent = 0;
 let userDefinedBottom = '5%';
 // --- START: New variable for radiant effect ---
 let radiantIntervalId = null;
+
+// Helper function to interpolate color from gradient
+function getColorFromGradient(position, colors) {
+    position = Math.max(0, Math.min(1, position)); // Clamp to 0-1
+    const scaledPosition = position * (colors.length - 1);
+    const index = Math.floor(scaledPosition);
+    const nextIndex = (index + 1) % colors.length;
+    const t = scaledPosition - index;
+    
+    const color1 = hexToRgb(colors[index]);
+    const color2 = hexToRgb(colors[nextIndex]);
+    
+    const r = Math.round(color1.r + (color2.r - color1.r) * t);
+    const g = Math.round(color1.g + (color2.g - color1.g) * t);
+    const b = Math.round(color1.b + (color2.b - color1.b) * t);
+    
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+}
 // --- END: New variable for radiant effect ---
 
 
@@ -27,7 +54,10 @@ const defaultSettings = {
     panelWidth: 90,
     panelHeight: 80,
     textColor: '#FFFFFF',
-    radiantEnabled: false,
+    strokeColor: '#000000',
+    strokeWidth: 1.5,
+    radiantTextEnabled: false,
+    radiantStrokeEnabled: false,
     radiantSpeed: 5,
     radiantMode: 'stable',
     radiantRandomEnabled: false,
@@ -421,25 +451,114 @@ function updateSubtitleAppearance() {
 
 
     // --- START: New Radiant Effect implementation ---
-    const setAnimationDuration = (speed) => {
-        const duration = Math.max(5.5 - (speed * 0.5), 0.1);
-        subtitleContainer.style.animationDuration = `${duration}s`;
-    };
-
-    if (lastSettings.radiantEnabled) {
+    const strokeWidth = lastSettings.strokeWidth || 1.5;
+    const strokeWidthStr = `${strokeWidth}px`;
+    
+    // Support both old and new settings format
+    const radiantTextEnabled = lastSettings.radiantTextEnabled !== undefined 
+        ? lastSettings.radiantTextEnabled 
+        : (lastSettings.radiantEnabled || false);
+    const radiantStrokeEnabled = lastSettings.radiantStrokeEnabled !== undefined 
+        ? lastSettings.radiantStrokeEnabled 
+        : (lastSettings.radiantEnabled || false);
+    
+    if (radiantTextEnabled || radiantStrokeEnabled) {
+        // Radiant gradient colors for text
+        const textGradientColors = ['#ff0000', '#ff7300', '#fffb00', '#48ff00', '#00ffd5', '#002bff', '#7a00ff', '#ff00c8', '#ff0000'];
+        // Radiant gradient colors for stroke - create gradient based on user's stroke color
+        const baseStrokeColor = lastSettings.strokeColor || '#000000';
+        const strokeRgb = hexToRgb(baseStrokeColor);
+        // Create gradient with more visible variation
+        const createStrokeGradient = (baseRgb) => {
+            const colors = [];
+            // Check if color is very dark (black or near black)
+            const isVeryDark = baseRgb.r < 30 && baseRgb.g < 30 && baseRgb.b < 30;
+            
+            for (let i = 0; i < 9; i++) {
+                const factor = Math.sin((i / 8) * Math.PI * 2) * 0.5 + 0.5; // 0 to 1
+                let r, g, b;
+                
+                if (isVeryDark) {
+                    // For very dark colors, create gradient from dark to bright complementary colors
+                    // Use a colorful gradient that's visible
+                    const hue = (i / 8) * 360;
+                    const saturation = 70 + (factor * 30); // 70-100%
+                    const lightness = 30 + (factor * 40); // 30-70%
+                    // Convert HSL to RGB
+                    const c = (1 - Math.abs(2 * (lightness / 100) - 1)) * (saturation / 100);
+                    const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+                    const m = (lightness / 100) - c / 2;
+                    let r1 = 0, g1 = 0, b1 = 0;
+                    if (hue < 60) { r1 = c; g1 = x; b1 = 0; }
+                    else if (hue < 120) { r1 = x; g1 = c; b1 = 0; }
+                    else if (hue < 180) { r1 = 0; g1 = c; b1 = x; }
+                    else if (hue < 240) { r1 = 0; g1 = x; b1 = c; }
+                    else if (hue < 300) { r1 = x; g1 = 0; b1 = c; }
+                    else { r1 = c; g1 = 0; b1 = x; }
+                    r = Math.round((r1 + m) * 255);
+                    g = Math.round((g1 + m) * 255);
+                    b = Math.round((b1 + m) * 255);
+                } else {
+                    // For other colors, create gradient from darker to lighter
+                    const minFactor = 0.4; // Minimum brightness (40%)
+                    const maxFactor = 1.2; // Maximum brightness (120%, can exceed for bright effect)
+                    const clampedFactor = Math.min(1, minFactor + (factor * (maxFactor - minFactor)));
+                    r = Math.round(Math.min(255, baseRgb.r * clampedFactor));
+                    g = Math.round(Math.min(255, baseRgb.g * clampedFactor));
+                    b = Math.round(Math.min(255, baseRgb.b * clampedFactor));
+                }
+                colors.push(`#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`);
+            }
+            return colors;
+        };
+        const strokeGradientColors = createStrokeGradient(strokeRgb);
+        
+        let textPosition = 0;
+        let strokePosition = 0.5; // Offset for visual effect
+        
+        const baseTextColor = lastSettings.textColor || '#FFFFFF';
+        const baseStrokeColorStatic = lastSettings.strokeColor || '#000000';
+        
+        const updateRadiantColors = () => {
+            // Text color: use radiant if enabled, otherwise use static color
+            const textColor = radiantTextEnabled 
+                ? getColorFromGradient(textPosition, textGradientColors)
+                : baseTextColor;
+            
+            // Stroke color: use radiant if enabled, otherwise use static color
+            const strokeColor = radiantStrokeEnabled
+                ? getColorFromGradient(strokePosition, strokeGradientColors)
+                : baseStrokeColorStatic;
+            
+            subtitleContainer.style.color = textColor;
+            if (lastSettings.backgroundStyle !== 'panel') {
+                subtitleContainer.style.textShadow = `-${strokeWidthStr} -${strokeWidthStr} 0 ${strokeColor}, ${strokeWidthStr} -${strokeWidthStr} 0 ${strokeColor}, -${strokeWidthStr} ${strokeWidthStr} 0 ${strokeColor}, ${strokeWidthStr} ${strokeWidthStr} 0 ${strokeColor}`;
+            } else {
+                subtitleContainer.style.textShadow = 'none';
+            }
+        };
+        
         subtitleContainer.classList.add('radiant-text');
-        subtitleContainer.style.textShadow = 'none';
-        subtitleContainer.style.animationName = 'radiant-background-scroll';
-        subtitleContainer.style.animationTimingFunction = 'linear';
-        subtitleContainer.style.animationIterationCount = 'infinite';
-        subtitleContainer.style.animationDirection = 'alternate';
+        subtitleContainer.style.background = 'none';
+        subtitleContainer.style.webkitBackgroundClip = '';
+        subtitleContainer.style.backgroundClip = '';
+        subtitleContainer.style.animation = '';
 
+        // Always create interval if either radiant is enabled
         if (lastSettings.radiantRandomEnabled) {
             radiantIntervalId = setInterval(() => {
                 const maxSpeed = lastSettings.radiantSpeed || 10;
                 const randomSpeed = Math.random() * (maxSpeed - 1) + 1;
-                setAnimationDuration(randomSpeed);
-            }, 1000);
+                
+                const speedFactor = (randomSpeed / 10) * 0.02;
+                if (radiantTextEnabled) {
+                    textPosition = (textPosition + speedFactor) % 1;
+                }
+                if (radiantStrokeEnabled) {
+                    strokePosition = (strokePosition + speedFactor * 0.7) % 1; // Slightly different speed
+                }
+                updateRadiantColors();
+            }, 50);
         } else {
             switch (lastSettings.radiantMode) {
                 case 'pulse':
@@ -453,19 +572,42 @@ function updateSubtitleAppearance() {
                         const sinValue = Math.sin(angle); // -1 to 1
                         const normalizedSin = (sinValue + 1) / 2; // 0 to 1
                         const pulsatingSpeed = 1 + (normalizedSin * (speed - 1)); // From 1 to selected speed
-                        setAnimationDuration(pulsatingSpeed);
+                        
+                        const speedFactor = (pulsatingSpeed / 10) * 0.02;
+                        if (radiantTextEnabled) {
+                            textPosition = (textPosition + speedFactor) % 1;
+                        }
+                        if (radiantStrokeEnabled) {
+                            strokePosition = (strokePosition + speedFactor * 0.7) % 1;
+                        }
+                        updateRadiantColors();
                     }, 50); // Update every 50ms for smooth pulse
                     break;
                 case 'stable':
                 default:
-                    setAnimationDuration(lastSettings.radiantSpeed);
+                    const stableSpeed = lastSettings.radiantSpeed || 5;
+                    const stableSpeedFactor = (stableSpeed / 10) * 0.02;
+                    radiantIntervalId = setInterval(() => {
+                        if (radiantTextEnabled) {
+                            textPosition = (textPosition + stableSpeedFactor) % 1;
+                        }
+                        if (radiantStrokeEnabled) {
+                            strokePosition = (strokePosition + stableSpeedFactor * 0.7) % 1;
+                        }
+                        updateRadiantColors();
+                    }, 50);
                     break;
             }
         }
+        
+        // Initial update
+        updateRadiantColors();
     } else {
-        subtitleContainer.style.color = lastSettings.textColor || '#FFFFFF';
+        const textColor = lastSettings.textColor || '#FFFFFF';
+        const strokeColor = lastSettings.strokeColor || '#000000';
+        subtitleContainer.style.color = textColor;
         if (lastSettings.backgroundStyle !== 'panel') {
-            subtitleContainer.style.textShadow = '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000';
+            subtitleContainer.style.textShadow = `-${strokeWidthStr} -${strokeWidthStr} 0 ${strokeColor}, ${strokeWidthStr} -${strokeWidthStr} 0 ${strokeColor}, -${strokeWidthStr} ${strokeWidthStr} 0 ${strokeColor}, ${strokeWidthStr} ${strokeWidthStr} 0 ${strokeColor}`;
         } else {
             subtitleContainer.style.textShadow = 'none';
         }

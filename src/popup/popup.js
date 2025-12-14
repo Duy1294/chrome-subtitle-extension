@@ -50,7 +50,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const exportVocabBtn = document.getElementById('export-vocab-btn');
     const textColorInput = document.getElementById('text-color-input');
     const colorPickerInput = document.getElementById('color-picker-input');
-    const radiantToggle = document.getElementById('radiant-toggle');
+    const strokeColorInput = document.getElementById('stroke-color-input');
+    const strokeColorPickerInput = document.getElementById('stroke-color-picker-input');
+    const strokeWidthInput = document.getElementById('stroke-width-input');
+    const strokeWidthMinus = document.getElementById('stroke-width-minus');
+    const strokeWidthPlus = document.getElementById('stroke-width-plus');
+    const radiantTextToggle = document.getElementById('radiant-text-toggle');
+    const radiantStrokeToggle = document.getElementById('radiant-stroke-toggle');
     const radiantControlsRow = document.getElementById('radiant-controls-row');
     const radiantModeSelect = document.getElementById('radiant-mode-select');
     const radiantSpeedSlider = document.getElementById('radiant-speed-slider');
@@ -93,7 +99,10 @@ document.addEventListener('DOMContentLoaded', function() {
         panelWidth: 90,
         panelHeight: 80,
         textColor: '#FFFFFF',
-        radiantEnabled: false,
+        strokeColor: '#000000',
+        strokeWidth: 1.5,
+        radiantTextEnabled: false,
+        radiantStrokeEnabled: false,
         radiantSpeed: 5,
         radiantMode: 'stable',
         radiantRandomEnabled: false,
@@ -167,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function toggleRadiantControls() {
-        radiantControlsRow.style.display = radiantToggle.checked ? 'block' : 'none';
+        radiantControlsRow.style.display = (radiantTextToggle.checked || radiantStrokeToggle.checked) ? 'block' : 'none';
     }
 
     function updateRadiantSpeedLabel() {
@@ -183,7 +192,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    radiantToggle.addEventListener('change', () => {
+    radiantTextToggle.addEventListener('change', () => {
+        toggleRadiantControls();
+        applySettingsFromPanel(false);
+    });
+
+    radiantStrokeToggle.addEventListener('change', () => {
         toggleRadiantControls();
         applySettingsFromPanel(false);
     });
@@ -255,6 +269,40 @@ document.addEventListener('DOMContentLoaded', function() {
         const value = textColorInput.value;
         if (/^#[0-9A-F]{6}$/i.test(value)) {
             colorPickerInput.value = value;
+            applySettingsFromPanel(false);
+        }
+    });
+
+    strokeColorPickerInput.addEventListener('input', () => {
+        strokeColorInput.value = strokeColorPickerInput.value.toUpperCase();
+        applySettingsFromPanel(false);
+    });
+
+    strokeColorInput.addEventListener('input', () => {
+        const value = strokeColorInput.value;
+        if (/^#[0-9A-F]{6}$/i.test(value)) {
+            strokeColorPickerInput.value = value;
+            applySettingsFromPanel(false);
+        }
+    });
+
+    strokeWidthMinus.addEventListener('click', () => {
+        const current = parseFloat(strokeWidthInput.value) || 1.5;
+        const newValue = Math.max(0.5, current - 0.5);
+        strokeWidthInput.value = newValue.toFixed(1);
+        applySettingsFromPanel(false);
+    });
+
+    strokeWidthPlus.addEventListener('click', () => {
+        const current = parseFloat(strokeWidthInput.value) || 1.5;
+        const newValue = Math.min(10, current + 0.5);
+        strokeWidthInput.value = newValue.toFixed(1);
+        applySettingsFromPanel(false);
+    });
+
+    strokeWidthInput.addEventListener('input', () => {
+        const value = parseFloat(strokeWidthInput.value);
+        if (!isNaN(value) && value >= 0.5 && value <= 10) {
             applySettingsFromPanel(false);
         }
     });
@@ -534,7 +582,10 @@ document.addEventListener('DOMContentLoaded', function() {
             panelWidth: parseInt(panelWidthInput.value, 10) || 90,
             panelHeight: parseInt(panelHeightInput.value, 10) || 80,
             textColor: textColorInput.value,
-            radiantEnabled: radiantToggle.checked,
+            strokeColor: strokeColorInput.value,
+            strokeWidth: parseFloat(strokeWidthInput.value) || 1.5,
+            radiantTextEnabled: radiantTextToggle.checked,
+            radiantStrokeEnabled: radiantStrokeToggle.checked,
             radiantSpeed: parseInt(radiantSpeedSlider.value, 10) || 5,
             radiantMode: radiantModeSelect.dataset.value || 'stable',
             radiantRandomEnabled: radiantRandomToggle.classList.contains('active'),
@@ -556,15 +607,27 @@ document.addEventListener('DOMContentLoaded', function() {
         panelHeightInput.value = settingsToApply.panelHeight;
         textColorInput.value = settingsToApply.textColor;
         colorPickerInput.value = settingsToApply.textColor;
+        strokeColorInput.value = settingsToApply.strokeColor || '#000000';
+        strokeColorPickerInput.value = settingsToApply.strokeColor || '#000000';
+        strokeWidthInput.value = (settingsToApply.strokeWidth || 1.5).toFixed(1);
 
         setCustomSelectValue(languageSelect, settingsToApply.language);
         setCustomSelectValue(targetLanguageSelect, settingsToApply.targetLanguage);
         setCustomSelectValue(backgroundStyleSelect, settingsToApply.backgroundStyle);
 
-        radiantToggle.checked = settingsToApply.radiantEnabled;
+        // Support both old and new settings format
+        if (settingsToApply.radiantEnabled !== undefined) {
+            // Old format - convert to new format
+            radiantTextToggle.checked = settingsToApply.radiantEnabled;
+            radiantStrokeToggle.checked = settingsToApply.radiantEnabled;
+        } else {
+            radiantTextToggle.checked = settingsToApply.radiantTextEnabled || false;
+            radiantStrokeToggle.checked = settingsToApply.radiantStrokeEnabled || false;
+        }
         radiantSpeedSlider.value = settingsToApply.radiantSpeed;
         radiantSpeedValue.textContent = settingsToApply.radiantSpeed;
         setCustomSelectValue(radiantModeSelect, settingsToApply.radiantMode);
+        toggleRadiantControls();
 
         if (settingsToApply.radiantRandomEnabled) {
             radiantRandomToggle.classList.add('active');
@@ -746,10 +809,22 @@ document.addEventListener('DOMContentLoaded', function() {
             setCustomSelectValue(targetLanguageSelect, result[TARGET_LANGUAGE_KEY] || defaultSettings.targetLanguage);
             setCustomSelectValue(backgroundStyleSelect, currentSettings.backgroundStyle);
             
-            radiantToggle.checked = currentSettings.radiantEnabled;
+            // Support both old and new settings format
+            if (currentSettings.radiantEnabled !== undefined) {
+                // Old format - convert to new format
+                radiantTextToggle.checked = currentSettings.radiantEnabled;
+                radiantStrokeToggle.checked = currentSettings.radiantEnabled;
+            } else {
+                radiantTextToggle.checked = currentSettings.radiantTextEnabled || false;
+                radiantStrokeToggle.checked = currentSettings.radiantStrokeEnabled || false;
+            }
             textColorInput.value = currentSettings.textColor;
             colorPickerInput.value = currentSettings.textColor;
+            strokeColorInput.value = currentSettings.strokeColor || '#000000';
+            strokeColorPickerInput.value = currentSettings.strokeColor || '#000000';
+            strokeWidthInput.value = (currentSettings.strokeWidth || 1.5).toFixed(1);
             radiantSpeedSlider.value = currentSettings.radiantSpeed;
+            toggleRadiantControls();
             radiantSpeedValue.textContent = currentSettings.radiantSpeed;
             setCustomSelectValue(radiantModeSelect, currentSettings.radiantMode);
 

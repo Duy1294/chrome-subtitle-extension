@@ -242,8 +242,27 @@
                   <input type="text" id="text-color-input" maxlength="7" size="7" placeholder="#FFFFFF">
               </div>
           </div>
+          <div class="setting-row">
+              <label>Stroke Color</label>
+              <div class="color-input-wrapper">
+                  <input type="color" id="stroke-color-picker-input" value="#000000">
+                  <input type="text" id="stroke-color-input" maxlength="7" size="7" placeholder="#000000">
+              </div>
+          </div>
+          <div class="setting-row">
+              <label for="stroke-width-input">Stroke Width</label>
+              <div class="input-group">
+                  <button id="stroke-width-minus">-</button>
+                  <input id="stroke-width-input" type="text" value="1.5" size="4">
+                  <button id="stroke-width-plus">+</button>
+                  <span>px</span>
+              </div>
+          </div>
           <label class="checkbox-label" style="margin-top: 10px;">
-              <input type="checkbox" id="radiant-toggle"> Enable Radiant Effect
+              <input type="checkbox" id="radiant-text-toggle"> Enable Radiant Text
+          </label>
+          <label class="checkbox-label">
+              <input type="checkbox" id="radiant-stroke-toggle"> Enable Radiant Stroke
           </label>
           <div id="radiant-controls-row" class="setting-group" style="display: none;">
              <div class="setting-row">
