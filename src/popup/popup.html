@@ -60,6 +60,12 @@
                         <span>Subscene</span>
                       </label>
                     </div>
+                    <div class="custom-option" data-source="subdl">
+                      <label style="cursor: pointer; display: flex; align-items: center; width: 100%; margin: 0;">
+                        <input type="checkbox" class="source-option-checkbox" data-source="subdl" style="margin-right: 8px;">
+                        <span>Subdl</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -114,6 +120,14 @@
                 <label for="deepl-api-key-input">DeepL API Key</label>
                 <input id="deepl-api-key-input" type="password" class="api-key-input">
             </div>
+            <div class="setting-row">
+                <label for="openai-api-key-input">OpenAI API Key</label>
+                <input id="openai-api-key-input" type="password" class="api-key-input">
+            </div>
+            <div class="setting-row">
+                <label for="google-ai-studio-api-key-input">Google AI Studio API Key</label>
+                <input id="google-ai-studio-api-key-input" type="password" class="api-key-input">
+            </div>
         </div>
         <div class="setting-group">
             <h3>Settings Profiles</h3>
@@ -141,6 +155,39 @@
             <label for="target-language-select">Translate To</label>
             <div class="custom-select-wrapper">
               <div id="target-language-select" class="custom-select">
+                <div class="custom-select-trigger"><span>Vietnamese</span></div>
+                <div class="custom-options">
+                  <div class="custom-option" data-value="VI"><span>Vietnamese</span></div>
+                  <div class="custom-option" data-value="EN"><span>English</span></div>
+                  <div class="custom-option" data-value="DE"><span>German</span></div>
+                  <div class="custom-option" data-value="FR"><span>French</span></div>
+                  <div class="custom-option" data-value="ES"><span>Spanish</span></div>
+                  <div class="custom-option" data-value="JA"><span>Japanese</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="setting-group">
+          <h3>Subtitle Translation</h3>
+          <div class="setting-row">
+            <label for="subtitle-translation-provider-select">Provider</label>
+            <div class="custom-select-wrapper">
+              <div id="subtitle-translation-provider-select" class="custom-select">
+                <div class="custom-select-trigger"><span>OpenAI</span></div>
+                <div class="custom-options">
+                  <div class="custom-option" data-value="openai"><span>OpenAI</span></div>
+                  <div class="custom-option" data-value="deepl"><span>DeepL</span></div>
+                  <div class="custom-option" data-value="google_ai_studio"><span>Google AI Studio</span></div>
+                  <div class="custom-option" data-value="gemini_chat"><span>Gemini Chat</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="setting-row">
+            <label for="subtitle-translation-target-select">Target Language</label>
+            <div class="custom-select-wrapper">
+              <div id="subtitle-translation-target-select" class="custom-select">
                 <div class="custom-select-trigger"><span>Vietnamese</span></div>
                 <div class="custom-options">
                   <div class="custom-option" data-value="VI"><span>Vietnamese</span></div>
@@ -308,6 +355,7 @@
 
       <div id="transcript-tab" class="tab-content">
         <h3>Transcript</h3>
+        <button id="translate-subtitles-btn" class="action-btn wide-btn">Translate Subtitles (AI)</button>
         <div id="transcript-container">
           <i>No transcript available. Load a subtitle file first.</i>
         </div>

@@ -8,12 +8,370 @@ async function getOrCreateOffscreenDocument() {
   });
 }
 
+async function translateChunkWithGoogleAIStudio({ apiKey, targetLang, texts }) {
+  const normalized = texts.map(normalizeSubtitleTextForTranslation);
+  const payload = {
+    target_language: mapGeminiTargetLang(targetLang),
+    lines: normalized
+  };
+
+  const promptText =
+    'You are a professional subtitle translator for movies/anime. Translate naturally while preserving meaning and tone. Keep each line concise for subtitles. Do not add explanations.\n' +
+    'Keep the number of lines EXACTLY the same; do not merge or split lines.\n' +
+    'Return valid JSON ONLY in the form: {"lines": ["..."]}. No markdown, no backticks, no extra keys.\n\n' +
+    'INPUT JSON:\n' +
+    JSON.stringify(payload);
+
+  async function callGenerateContent(modelName) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const body = {
+      generationConfig: {
+        temperature: 0.2
+      },
+      contents: [
+        {
+          parts: [{ text: promptText }]
+        }
+      ]
+    };
+
+    const resp = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    }, 60000);
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      const err = new Error(`Google AI Studio error ${resp.status}: ${errText || resp.statusText}`);
+      err.status = resp.status;
+      throw err;
+    }
+
+    const data = await resp.json();
+    const content = data?.candidates?.[0]?.content;
+    const text = content?.parts?.map(p => p?.text || '').join('') || '';
+    if (!text) throw new Error('Google AI Studio returned empty content');
+    return text;
+  }
+
+  async function listModels() {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+    const resp = await fetchWithTimeout(url, { method: 'GET' }, 30000);
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`Google AI Studio ListModels error ${resp.status}: ${errText || resp.statusText}`);
+    }
+    const data = await resp.json();
+    return Array.isArray(data?.models) ? data.models : [];
+  }
+
+  function parseLinesFromJsonText(text) {
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      // Try to salvage first JSON object in the response
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('Google AI Studio returned non-JSON content');
+      parsed = JSON.parse(match[0]);
+    }
+
+    const outLines = parsed?.lines;
+    if (!Array.isArray(outLines)) throw new Error('Google AI Studio JSON missing lines[]');
+    if (outLines.length !== texts.length) {
+      throw new Error(`Google AI Studio lines length mismatch: expected ${texts.length}, got ${outLines.length}`);
+    }
+    return outLines.map(v => (typeof v === 'string' ? v : String(v ?? '')));
+  }
+
+  const preferredModels = [
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro-latest',
+    'gemini-1.0-pro',
+    'gemini-pro'
+  ];
+
+  for (const model of preferredModels) {
+    try {
+      const text = await callGenerateContent(model);
+      return parseLinesFromJsonText(text);
+    } catch (e) {
+      const msg = String(e?.message || e);
+      const isModelNotFound = (e?.status === 404) || msg.includes('not found') || msg.includes('NOT_FOUND');
+      if (!isModelNotFound) {
+        throw e;
+      }
+    }
+  }
+
+  // Fallback: discover supported models dynamically.
+  const models = await listModels();
+  const supported = models
+    .filter(m => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map(m => (m.name || '').replace(/^models\//, ''))
+    .filter(Boolean);
+
+  const pick = supported.find(n => /gemini/i.test(n)) || supported[0];
+  if (!pick) {
+    throw new Error('Google AI Studio: no generateContent-capable model found.');
+  }
+
+  const text = await callGenerateContent(pick);
+  return parseLinesFromJsonText(text);
+}
+
+async function translateChunkWithGeminiChat({ apiKey, targetLang, texts }) {
+  const normalized = texts.map(normalizeSubtitleTextForTranslation);
+  const payload = {
+    target_language: mapGeminiTargetLang(targetLang),
+    lines: normalized
+  };
+
+  const systemText =
+    'You are a professional subtitle translator for movies/anime. Translate naturally while preserving meaning and tone. Keep each line concise for subtitles. Do not add explanations.';
+  const userText =
+    'Translate the subtitle lines to the target language.\n' +
+    'Keep the number of lines EXACTLY the same; do not merge or split lines.\n' +
+    'Return valid JSON ONLY in the form: {"lines": ["..."]}. No markdown, no backticks, no extra keys.\n\n' +
+    'INPUT JSON:\n' +
+    JSON.stringify(payload);
+
+  async function callGenerateContent(modelName) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const body = {
+      generationConfig: {
+        temperature: 0.2
+      },
+      contents: [
+        { role: 'user', parts: [{ text: systemText }] },
+        { role: 'user', parts: [{ text: userText }] }
+      ]
+    };
+
+    const resp = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    }, 60000);
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      const err = new Error(`Gemini Chat error ${resp.status}: ${errText || resp.statusText}`);
+      err.status = resp.status;
+      throw err;
+    }
+
+    const data = await resp.json();
+    const content = data?.candidates?.[0]?.content;
+    const text = content?.parts?.map(p => p?.text || '').join('') || '';
+    if (!text) throw new Error('Gemini Chat returned empty content');
+    return text;
+  }
+
+  async function listModels() {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+    const resp = await fetchWithTimeout(url, { method: 'GET' }, 30000);
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new Error(`Gemini Chat ListModels error ${resp.status}: ${errText || resp.statusText}`);
+    }
+    const data = await resp.json();
+    return Array.isArray(data?.models) ? data.models : [];
+  }
+
+  function parseLinesFromJsonText(text) {
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('Gemini Chat returned non-JSON content');
+      parsed = JSON.parse(match[0]);
+    }
+
+    const outLines = parsed?.lines;
+    if (!Array.isArray(outLines)) throw new Error('Gemini Chat JSON missing lines[]');
+    if (outLines.length !== texts.length) {
+      throw new Error(`Gemini Chat lines length mismatch: expected ${texts.length}, got ${outLines.length}`);
+    }
+    return outLines.map(v => (typeof v === 'string' ? v : String(v ?? '')));
+  }
+
+  const preferredModels = [
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro-latest',
+    'gemini-1.0-pro',
+    'gemini-pro'
+  ];
+
+  for (const model of preferredModels) {
+    try {
+      const text = await callGenerateContent(model);
+      return parseLinesFromJsonText(text);
+    } catch (e) {
+      const msg = String(e?.message || e);
+      const isModelNotFound = (e?.status === 404) || msg.includes('not found') || msg.includes('NOT_FOUND');
+      if (!isModelNotFound) throw e;
+    }
+  }
+
+  const models = await listModels();
+  const supported = models
+    .filter(m => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map(m => (m.name || '').replace(/^models\//, ''))
+    .filter(Boolean);
+
+  const pick = supported.find(n => /gemini/i.test(n)) || supported[0];
+  if (!pick) {
+    throw new Error('Gemini Chat: no generateContent-capable model found.');
+  }
+
+  const text = await callGenerateContent(pick);
+  return parseLinesFromJsonText(text);
+}
+
 function fetchWithTimeout(resource, options = {}, timeout = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   const promise = fetch(resource, { ...options, signal: controller.signal });
   promise.finally(() => clearTimeout(id));
   return promise;
+}
+
+function chunkArray(arr, chunkSize) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += chunkSize) {
+    out.push(arr.slice(i, i + chunkSize));
+  }
+  return out;
+}
+
+function normalizeSubtitleTextForTranslation(t) {
+  if (!t) return '';
+  return String(t)
+    .replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, '')
+    .replace(/\s+$/g, '')
+    .trim();
+}
+
+function mapDeepLTargetLang(code) {
+  const upper = (code || '').toUpperCase();
+  const map = {
+    VI: 'VI',
+    EN: 'EN',
+    DE: 'DE',
+    FR: 'FR',
+    ES: 'ES',
+    JA: 'JA'
+  };
+  return map[upper] || 'EN';
+}
+
+function mapGeminiTargetLang(code) {
+  const upper = (code || '').toUpperCase();
+  const map = {
+    VI: 'Vietnamese',
+    EN: 'English',
+    DE: 'German',
+    FR: 'French',
+    ES: 'Spanish',
+    JA: 'Japanese'
+  };
+  return map[upper] || 'English';
+}
+
+async function translateChunkWithOpenAI({ apiKey, targetLang, texts }) {
+  const normalized = texts.map(normalizeSubtitleTextForTranslation);
+  const userPayload = {
+    target_language: (targetLang || 'VI').toUpperCase(),
+    lines: normalized
+  };
+
+  const body = {
+    model: 'gpt-4o-mini',
+    temperature: 0.2,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a professional subtitle translator for movies/anime. Translate naturally while preserving meaning, tone, honorifics/relationship nuances when relevant. Keep each line concise and suitable for subtitles. Do not add explanations. Output MUST be valid JSON.'
+      },
+      {
+        role: 'user',
+        content:
+          'Translate the subtitle lines to the target_language. Keep the number of lines EXACTLY the same and keep line order. Do not merge or split lines. Keep punctuation natural. Preserve proper nouns.\n\nReturn JSON in the form: {"lines": ["..."]} with the same array length as input.\n\nINPUT JSON:\n' +
+          JSON.stringify(userPayload)
+      }
+    ]
+  };
+
+  const resp = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  }, 60000);
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`OpenAI error ${resp.status}: ${errText || resp.statusText}`);
+  }
+
+  const data = await resp.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error('OpenAI returned empty content');
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    throw new Error('OpenAI returned non-JSON content');
+  }
+  const outLines = parsed?.lines;
+  if (!Array.isArray(outLines)) throw new Error('OpenAI JSON missing lines[]');
+  if (outLines.length !== texts.length) {
+    throw new Error(`OpenAI lines length mismatch: expected ${texts.length}, got ${outLines.length}`);
+  }
+  return outLines.map(v => (typeof v === 'string' ? v : String(v ?? '')));
+}
+
+async function translateChunkWithDeepL({ apiKey, targetLang, texts }) {
+  const isFreeTier = apiKey.endsWith(':fx');
+  const apiUrl = isFreeTier ? 'https://api-free.deepl.com/v2/translate' : 'https://api.deepl.com/v2/translate';
+  const body = {
+    text: texts.map(normalizeSubtitleTextForTranslation),
+    target_lang: mapDeepLTargetLang(targetLang)
+  };
+
+  const resp = await fetchWithTimeout(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `DeepL-Auth-Key ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  }, 60000);
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(`DeepL error ${resp.status}: ${errText || resp.statusText}`);
+  }
+
+  const data = await resp.json();
+  const translations = data?.translations;
+  if (!Array.isArray(translations)) throw new Error('DeepL returned no translations');
+  const outLines = translations.map(t => t?.text ?? '');
+  if (outLines.length !== texts.length) {
+    throw new Error(`DeepL lines length mismatch: expected ${texts.length}, got ${outLines.length}`);
+  }
+  return outLines;
 }
 
 const openSubtitlesLangCodes = {
@@ -30,6 +388,7 @@ const searchSources = {
   kitsunekko: { url: 'https://kitsunekko.net/dirlist.php?dir=subtitles/japanese/', method: 'GET' },
   opensubtitles: { url: 'https://www.opensubtitles.org/en/search2/', method: 'GET' },
   subscene: { url: 'https://sub-scene.com/search', method: 'GET' },
+  subdl: { url: 'https://subdl.com/search/', method: 'GET' },
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -59,6 +418,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             // Subscene search URL format: https://sub-scene.com/search?query=your+name
             const encodedQuery = encodeURIComponent(query.trim()).replace(/%20/g, '+');
             url += `?query=${encodedQuery}`;
+        } else if (sourceKey === 'subdl') {
+            // Subdl search URL format: https://subdl.com/search/{query}
+            const encodedQuery = encodeURIComponent(query.trim()).replace(/%20/g, '%20');
+            url += `${encodedQuery}`;
         }
         // Build fetch options with proper headers
         const fetchOptions = {
@@ -241,6 +604,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
                 errorDetail = ' (Blocked by Cloudflare protection - may work if accessed directly in browser)';
               }
+            } else if (errorLower.includes('subdl')) {
+              sourceName = 'Subdl';
             }
             fetchErrors.push(`Failed to fetch from ${sourceName}${errorDetail}.`);
           }
@@ -367,6 +732,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         else if (request.url.includes('jimaku.cc')) source = 'jimaku';
         else if (request.url.includes('opensubtitles.org')) source = 'opensubtitles';
         else if (request.url.includes('sub-scene.com')) source = 'subscene';
+        else if (request.url.includes('subdl.com')) source = 'subdl';
         
         // For OpenSubtitles, check for pagination and fetch all subtitle pages
         if (source === 'opensubtitles') {
@@ -460,8 +826,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'fetchSubtitleContent') {
     (async () => {
         // Check if this is an OpenSubtitles detail page (not a direct download link)
-        if (request.url.includes('opensubtitles.org') && 
-            (request.url.includes('/subtitles/') || request.url.includes('/en/subtitles/'))) {
+        if (request.url.includes('opensubtitles.org')) {
+            let isOpenSubtitlesDetailPage = false;
+            try {
+                const u = new URL(request.url);
+                const path = u.pathname || '';
+                // Listing pages live under /en/search/... (no download button). Detail pages are /subtitles/<id> or /en/subtitles/<id>.
+                // Ensure we don't misclassify /en/search/... as a detail page.
+                isOpenSubtitlesDetailPage =
+                    (/^\/en\/subtitles\/\d+/.test(path) || /^\/subtitles\/\d+/.test(path)) &&
+                    !path.startsWith('/en/search/');
+            } catch (e) {
+                isOpenSubtitlesDetailPage =
+                    (request.url.includes('/subtitles/') || request.url.includes('/en/subtitles/')) &&
+                    !request.url.includes('/en/search/');
+            }
+
+            if (isOpenSubtitlesDetailPage) {
             // This is a detail page, need to fetch HTML and extract download link
             try {
                 const htmlText = await fetchWithTimeout(request.url, {}, 15000)
@@ -508,6 +889,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     action: 'showStatus', 
                     message: `<i>Error: Could not load OpenSubtitles page: ${error.message}</i>` 
                 });
+            }
             }
         } else if (request.url.includes('sub-scene.com') && request.url.includes('/subtitle/')) {
             // This is a Subscene detail page, need to fetch HTML and extract download link
@@ -771,6 +1153,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
     });
     return true;
+
+  } else if (request.action === 'translateSubtitleTexts') {
+    (async () => {
+      try {
+        const { provider, targetLang, texts } = request;
+        if (!Array.isArray(texts) || texts.length === 0) {
+          chrome.runtime.sendMessage({ action: 'subtitleTranslationResult', translatedTexts: null, error: 'No texts to translate.' });
+          return;
+        }
+
+        const storage = await chrome.storage.local.get(['openai_api_key', 'deepl_api_key', 'google_ai_studio_api_key']);
+        const openaiKey = storage.openai_api_key || '';
+        const deeplKey = storage.deepl_api_key || '';
+        const googleAiStudioKey = storage.google_ai_studio_api_key || '';
+
+        const selectedProvider = (provider || 'openai').toLowerCase();
+        const chunks = chunkArray(texts, 40);
+        const translatedAll = [];
+
+        for (const chunk of chunks) {
+          if (selectedProvider === 'deepl') {
+            if (!deeplKey) throw new Error('Missing DeepL API key');
+            const translated = await translateChunkWithDeepL({ apiKey: deeplKey, targetLang, texts: chunk });
+            translatedAll.push(...translated);
+          } else if (selectedProvider === 'google_ai_studio') {
+            if (!googleAiStudioKey) throw new Error('Missing Google AI Studio API key');
+            const translated = await translateChunkWithGoogleAIStudio({ apiKey: googleAiStudioKey, targetLang, texts: chunk });
+            translatedAll.push(...translated);
+          } else if (selectedProvider === 'gemini_chat') {
+            if (!googleAiStudioKey) throw new Error('Missing Google AI Studio API key');
+            const translated = await translateChunkWithGeminiChat({ apiKey: googleAiStudioKey, targetLang, texts: chunk });
+            translatedAll.push(...translated);
+          } else {
+            if (!openaiKey) throw new Error('Missing OpenAI API key');
+            const translated = await translateChunkWithOpenAI({ apiKey: openaiKey, targetLang, texts: chunk });
+            translatedAll.push(...translated);
+          }
+        }
+
+        if (translatedAll.length !== texts.length) {
+          throw new Error(`Translation length mismatch: expected ${texts.length}, got ${translatedAll.length}`);
+        }
+
+        chrome.runtime.sendMessage({ action: 'subtitleTranslationResult', translatedTexts: translatedAll, error: null });
+      } catch (error) {
+        chrome.runtime.sendMessage({ action: 'subtitleTranslationResult', translatedTexts: null, error: error?.message || String(error) });
+      }
+    })();
+    return;
   
   } else if (request.action === 'clearSubtitles') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {

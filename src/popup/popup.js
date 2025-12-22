@@ -44,7 +44,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const languageFilterIndicator = document.getElementById('language-filter-indicator');
     const languageFilterText = document.getElementById('language-filter-text');
     const deeplApiKeyInput = document.getElementById('deepl-api-key-input');
+    const openaiApiKeyInput = document.getElementById('openai-api-key-input');
+    const googleAiStudioApiKeyInput = document.getElementById('google-ai-studio-api-key-input');
     const dictionaryProviderSelect = document.getElementById('dictionary-provider-select');
+    const subtitleTranslationProviderSelect = document.getElementById('subtitle-translation-provider-select');
+    const subtitleTranslationTargetSelect = document.getElementById('subtitle-translation-target-select');
+    const translateSubtitlesBtn = document.getElementById('translate-subtitles-btn');
     const vocabTabBtn = document.getElementById('vocab-tab-btn');
     const vocabListContainer = document.getElementById('vocab-list-container');
     const exportVocabBtn = document.getElementById('export-vocab-btn');
@@ -70,8 +75,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const deleteProfileBtn = document.getElementById('delete-profile-btn');
 
     const DEEPL_KEY_STORAGE = 'deepl_api_key';
+    const OPENAI_KEY_STORAGE = 'openai_api_key';
+    const GOOGLE_AI_STUDIO_KEY_STORAGE = 'google_ai_studio_api_key';
     const DICTIONARY_PROVIDER_KEY = 'dictionaryProviderSettings';
     const TARGET_LANGUAGE_KEY = 'targetTranslationLanguage';
+    const SUBTITLE_TRANSLATION_PROVIDER_KEY = 'subtitleTranslationProvider';
+    const SUBTITLE_TRANSLATION_TARGET_KEY = 'subtitleTranslationTargetLanguage';
     const SETTINGS_KEY = 'subtitleUserSettings';
     const SEARCH_HISTORY_KEY = 'subtitleSearchHistory';
     const SESSION_SUB_KEY = 'session_currentSubData';
@@ -224,6 +233,32 @@ document.addEventListener('DOMContentLoaded', function() {
         const key = deeplApiKeyInput.value.trim();
         chrome.storage.local.set({ [DEEPL_KEY_STORAGE]: key });
     });
+
+    if (openaiApiKeyInput) {
+        openaiApiKeyInput.addEventListener('change', () => {
+            const key = openaiApiKeyInput.value.trim();
+            chrome.storage.local.set({ [OPENAI_KEY_STORAGE]: key });
+        });
+    }
+
+    if (googleAiStudioApiKeyInput) {
+        googleAiStudioApiKeyInput.addEventListener('change', () => {
+            const key = googleAiStudioApiKeyInput.value.trim();
+            chrome.storage.local.set({ [GOOGLE_AI_STUDIO_KEY_STORAGE]: key });
+        });
+    }
+
+    if (subtitleTranslationProviderSelect) {
+        subtitleTranslationProviderSelect.addEventListener('change', () => {
+            chrome.storage.local.set({ [SUBTITLE_TRANSLATION_PROVIDER_KEY]: subtitleTranslationProviderSelect.dataset.value });
+        });
+    }
+
+    if (subtitleTranslationTargetSelect) {
+        subtitleTranslationTargetSelect.addEventListener('change', () => {
+            chrome.storage.local.set({ [SUBTITLE_TRANSLATION_TARGET_KEY]: subtitleTranslationTargetSelect.dataset.value });
+        });
+    }
 
     targetLanguageSelect.addEventListener('change', () => {
         chrome.storage.local.set({ [TARGET_LANGUAGE_KEY]: targetLanguageSelect.dataset.value });
@@ -786,7 +821,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function loadSettings() {
-        chrome.storage.local.get([SETTINGS_KEY, SELECTED_SOURCES_KEY, DEEPL_KEY_STORAGE, DICTIONARY_PROVIDER_KEY, TARGET_LANGUAGE_KEY, 'searchLanguage'], (result) => {
+        chrome.storage.local.get([
+            SETTINGS_KEY,
+            SELECTED_SOURCES_KEY,
+            DEEPL_KEY_STORAGE,
+            OPENAI_KEY_STORAGE,
+            GOOGLE_AI_STUDIO_KEY_STORAGE,
+            DICTIONARY_PROVIDER_KEY,
+            TARGET_LANGUAGE_KEY,
+            SUBTITLE_TRANSLATION_PROVIDER_KEY,
+            SUBTITLE_TRANSLATION_TARGET_KEY,
+            'searchLanguage'
+        ], (result) => {
             const savedSettings = result[SETTINGS_KEY] || {};
             const currentSettings = { ...defaultSettings, ...savedSettings };
             const rateInput = document.getElementById('rate-input');
@@ -863,7 +909,130 @@ document.addEventListener('DOMContentLoaded', function() {
             if (result[DEEPL_KEY_STORAGE]) {
                 deeplApiKeyInput.value = result[DEEPL_KEY_STORAGE];
             }
+
+            if (openaiApiKeyInput && result[OPENAI_KEY_STORAGE]) {
+                openaiApiKeyInput.value = result[OPENAI_KEY_STORAGE];
+            }
+
+            if (googleAiStudioApiKeyInput && result[GOOGLE_AI_STUDIO_KEY_STORAGE]) {
+                googleAiStudioApiKeyInput.value = result[GOOGLE_AI_STUDIO_KEY_STORAGE];
+            }
+
+            if (subtitleTranslationProviderSelect) {
+                setCustomSelectValue(subtitleTranslationProviderSelect, result[SUBTITLE_TRANSLATION_PROVIDER_KEY] || 'openai');
+            }
+
+            if (subtitleTranslationTargetSelect) {
+                setCustomSelectValue(subtitleTranslationTargetSelect, result[SUBTITLE_TRANSLATION_TARGET_KEY] || 'VI');
+            }
         });
+    }
+
+    async function handleTranslateSubtitlesClick() {
+        const result = await chrome.storage.session.get([SESSION_SUB_KEY]);
+        const srtText = result[SESSION_SUB_KEY]?.data || '';
+        if (!srtText || !srtText.trim()) {
+            showStatusMessage('<i>No subtitle loaded to translate.</i>');
+            return;
+        }
+
+        const settingsResult = await chrome.storage.local.get([
+            DEEPL_KEY_STORAGE,
+            OPENAI_KEY_STORAGE,
+            GOOGLE_AI_STUDIO_KEY_STORAGE,
+            SUBTITLE_TRANSLATION_PROVIDER_KEY,
+            SUBTITLE_TRANSLATION_TARGET_KEY
+        ]);
+
+        const provider = settingsResult[SUBTITLE_TRANSLATION_PROVIDER_KEY] || 'openai';
+        const targetLang = settingsResult[SUBTITLE_TRANSLATION_TARGET_KEY] || 'VI';
+
+        if (provider === 'openai' && !settingsResult[OPENAI_KEY_STORAGE]) {
+            showStatusMessage('<i style="color: var(--danger-color);">Missing OpenAI API key. Add it in Settings.</i>', true);
+            showTab('settings-tab');
+            return;
+        }
+
+        if (provider === 'deepl' && !settingsResult[DEEPL_KEY_STORAGE]) {
+            showStatusMessage('<i style="color: var(--danger-color);">Missing DeepL API key. Add it in Settings.</i>', true);
+            showTab('settings-tab');
+            return;
+        }
+
+        if (provider === 'google_ai_studio' && !settingsResult[GOOGLE_AI_STUDIO_KEY_STORAGE]) {
+            showStatusMessage('<i style="color: var(--danger-color);">Missing Google AI Studio API key. Add it in Settings.</i>', true);
+            showTab('settings-tab');
+            return;
+        }
+
+        if (provider === 'gemini_chat' && !settingsResult[GOOGLE_AI_STUDIO_KEY_STORAGE]) {
+            showStatusMessage('<i style="color: var(--danger-color);">Missing Google AI Studio API key. Add it in Settings.</i>', true);
+            showTab('settings-tab');
+            return;
+        }
+
+        const providerLabelMap = {
+            openai: 'OpenAI',
+            deepl: 'DeepL',
+            google_ai_studio: 'Google AI Studio',
+            gemini_chat: 'Gemini Chat'
+        };
+        const providerLabel = providerLabelMap[provider] || provider;
+        showStatusMessage(`<i>Translating subtitles to <b>${targetLang}</b> via <b>${providerLabel}</b>...</i>`);
+
+        let captions;
+        try {
+            captions = subsrt.parse(srtText);
+        } catch (e) {
+            showStatusMessage('<i style="color: var(--danger-color);">Error: Could not parse subtitle for translation.</i>', true);
+            return;
+        }
+
+        const texts = captions.map(c => (c.text || '').replace(/<[^>]*>/g, ''));
+
+        const translationResult = await new Promise((resolve) => {
+            const listener = (msg) => {
+                if (msg.action === 'subtitleTranslationResult') {
+                    chrome.runtime.onMessage.removeListener(listener);
+                    resolve({ translatedTexts: msg.translatedTexts || null, error: msg.error || null });
+                }
+            };
+            chrome.runtime.onMessage.addListener(listener);
+            chrome.runtime.sendMessage({
+                action: 'translateSubtitleTexts',
+                provider,
+                targetLang,
+                texts
+            });
+            setTimeout(() => {
+                chrome.runtime.onMessage.removeListener(listener);
+                resolve({ translatedTexts: null, error: 'Translation timed out.' });
+            }, 120000);
+        });
+
+        if (translationResult?.error) {
+            showStatusMessage(`<i style="color: var(--danger-color);">${translationResult.error}</i>`, true);
+            return;
+        }
+
+        const translatedTexts = translationResult?.translatedTexts;
+
+        if (!translatedTexts || !Array.isArray(translatedTexts) || translatedTexts.length !== texts.length) {
+            showStatusMessage('<i style="color: var(--danger-color);">Translation failed or returned invalid result.</i>', true);
+            return;
+        }
+
+        captions.forEach((cap, i) => {
+            cap.text = translatedTexts[i] || cap.text;
+        });
+
+        const translatedSrt = subsrt.build(captions, { format: 'srt' });
+        await loadSubData(translatedSrt, false);
+        showStatusMessage('<i style="color: var(--success-color);">Subtitle translated successfully.</i>');
+    }
+
+    if (translateSubtitlesBtn) {
+        translateSubtitlesBtn.addEventListener('click', handleTranslateSubtitlesClick);
     }
 
     function saveSearchHistory(query) {
@@ -1200,6 +1369,12 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.storage.session.set({ [SESSION_APPEND_KEY]: isAppending });
         const message = isAppending ? `Appending subtitle from` : `Loading subtitle from`;
         showStatusMessage(`<i>${message} <b>${episodeItem.title}</b>...</i>`);
+
+        if (episodeItem.isMovie) {
+            showStatusMessage(`<i>Loading subtitles for <b>${episodeItem.title}</b>...</i>`);
+            chrome.runtime.sendMessage({ action: 'fetchSubtitlePage', url: episodeItem.url });
+            return;
+        }
         
         let format = 'srt';
         if (episodeItem.format) {
@@ -1382,7 +1557,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateSourceDropdownText() {
         const selectedSources = getSelectedSources();
         const trigger = sourceSelect.querySelector('.custom-select-trigger span');
-        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene'];
+        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene', 'subdl'];
         const allSelected = allSources.every(source => selectedSources.includes(source));
         
         if (selectedSources.length === 0) {
@@ -1397,7 +1572,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Helper function to update "All" checkbox state
     function updateAllCheckboxState() {
         const selectedSources = getSelectedSources();
-        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene'];
+        const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene', 'subdl'];
         const allSelected = allSources.every(source => selectedSources.includes(source));
         allSourceCheckbox.checked = allSelected && selectedSources.length === allSources.length;
     }
@@ -1465,7 +1640,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Handle "All" checkbox
                 if (checkbox.dataset.source === 'all') {
-                    const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene'];
+                    const allSources = ['jimaku', 'kitsunekko', 'opensubtitles', 'subscene', 'subdl'];
                     const allSelected = allSources.every(source => {
                         const cb = document.querySelector(`.source-option-checkbox[data-source="${source}"]`);
                         return cb && cb.checked;

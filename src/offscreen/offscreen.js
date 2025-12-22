@@ -1,18 +1,32 @@
 import { Archive } from '../../lib/libarchive.js';
 
 window.addEventListener('load', function() {
+    function detectFileFormatFromUrl(url) {
+        const lower = (url || '').toLowerCase();
+        if (lower.endsWith('.srt')) return 'srt';
+        if (lower.endsWith('.ass') || lower.endsWith('.ssa')) return 'ass';
+        if (lower.endsWith('.zip')) return 'zip';
+        if (lower.endsWith('.rar')) return 'rar';
+        if (lower.endsWith('.7z')) return '7z';
+        return null;
+    }
+
     function parseJimaku(doc, query) {
         const results = [];
         const lowerCaseQuery = query.toLowerCase();
-        doc.querySelectorAll('a.file-name').forEach(link => {
+        const candidates = doc.querySelectorAll('a.table-data.file-name, a.file-name');
+        candidates.forEach(link => {
             const title = link.textContent.trim();
-            if (title.toLowerCase().includes(lowerCaseQuery)) {
-                results.push({
-                    title: title,
-                    url: new URL(link.getAttribute('href'), 'https://jimaku.cc/').href,
-                    source: 'Jimaku'
-                });
-            }
+            if (!title || title.includes('[Parent Directory]')) return;
+            if (!title.toLowerCase().includes(lowerCaseQuery)) return;
+            const href = link.getAttribute('href');
+            if (!href) return;
+            results.push({
+                title: title,
+                url: new URL(href, 'https://jimaku.cc/').href,
+                source: 'Jimaku',
+                isMovie: true
+            });
         });
         return results;
     }
@@ -20,16 +34,78 @@ window.addEventListener('load', function() {
     function parseKitsunekko(doc, query) {
         const results = [];
         const lowerCaseQuery = query.toLowerCase();
-        doc.querySelectorAll('td[colspan="2"] a').forEach(link => {
+        const candidates = doc.querySelectorAll('table#flisttable td[colspan="2"] a, td[colspan="2"] a, table#flisttable tr > td:first-child a');
+        candidates.forEach(link => {
             const title = link.textContent.trim();
-            if (title && title.toLowerCase().includes(lowerCaseQuery)) {
+            if (!title || title.includes('[Parent Directory]')) return;
+            if (!title.toLowerCase().includes(lowerCaseQuery)) return;
+            const href = link.getAttribute('href');
+            if (!href) return;
+            results.push({
+                title: title,
+                url: new URL(href, 'https://kitsunekko.net/').href,
+                source: 'Kitsunekko',
+                isMovie: true
+            });
+        });
+        return results;
+    }
+
+    function parseSubdlSearch(doc, query) {
+        const results = [];
+        const seen = new Set();
+        const lowerCaseQuery = (query || '').toLowerCase();
+        // Current Subdl search is a Next.js HTML page: results are <a href="/subtitle/sd.../slug"> ... </a>
+        const anchors = doc.querySelectorAll('a[href*="/subtitle/sd"]');
+        anchors.forEach(a => {
+            const href = a.getAttribute('href');
+            if (!href) return;
+            const url = href.startsWith('http') ? href : new URL(href, 'https://subdl.com').href;
+            if (!url.includes('/subtitle/sd')) return;
+            if (seen.has(url)) return;
+            seen.add(url);
+
+            // Prefer h3 title if present, else fallback to link text.
+            const h3 = a.querySelector('h3');
+            let title = (h3 ? h3.textContent : a.textContent) || '';
+            title = title.replace(/\s+/g, ' ').trim();
+            if (!title) return;
+            if (lowerCaseQuery && !title.toLowerCase().includes(lowerCaseQuery)) {
+                // Keep anyway; Subdl results can have variants and non-exact matches.
+            }
+            results.push({
+                title,
+                url,
+                source: 'Subdl',
+                isMovie: false
+            });
+        });
+
+        // Fallback: some simplified responses may be plain text with [Title](URL)
+        if (results.length === 0) {
+            const text = doc.body ? doc.body.textContent || doc.body.innerText || '' : '';
+            const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+            let match;
+            while ((match = linkRegex.exec(text)) !== null) {
+                const title = match[1].trim();
+                let url = match[2].trim();
+                if (!url.startsWith('http')) {
+                    url = new URL(url, 'https://subdl.com').href;
+                }
+                if (!url.includes('/subtitle/sd')) continue;
+                if (seen.has(url)) continue;
+                seen.add(url);
+                if (lowerCaseQuery && !title.toLowerCase().includes(lowerCaseQuery)) {
+                    // Still include; Subdl results are already relevant
+                }
                 results.push({
-                    title: title,
-                    url: new URL(link.getAttribute('href'), 'https://kitsunekko.net/').href,
-                    source: 'Kitsunekko'
+                    title,
+                    url,
+                    source: 'Subdl',
+                    isMovie: false
                 });
             }
-        });
+        }
         return results;
     }
 
@@ -267,7 +343,7 @@ window.addEventListener('load', function() {
                         const episodeName = nameEl.textContent.trim();
                         const url = new URL(linkEl.getAttribute('href'), 'https://www.opensubtitles.org').href;
                         const displayTitle = `S${currentSeason.padStart(2, '0')}E${episodeNumber.padStart(2, '0')}: ${episodeName}`;
-                        results.push({ title: displayTitle, url, source: 'OpenSubtitles' });
+                        results.push({ title: displayTitle, url, source: 'OpenSubtitles', isMovie: true });
                     }
                 }
             });
@@ -559,7 +635,16 @@ window.addEventListener('load', function() {
                     title = title.replace(/[\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim();
                     
                     if (title && href) {
-                        const fullUrl = new URL(href, 'https://www.opensubtitles.org').href;
+                        let normalizedHref = href;
+                        const subtitleIdFromHref = href.match(/\/subtitles\/(\d+)/);
+                        const subtitleIdFromRow = (row.id || '').match(/^name(\d+)$/);
+                        const subtitleId = (subtitleIdFromHref && subtitleIdFromHref[1]) || (subtitleIdFromRow && subtitleIdFromRow[1]) || null;
+                        if (subtitleId && !href.includes('/subtitles/')) {
+                            normalizedHref = `/en/subtitles/${subtitleId}`;
+                        } else if (subtitleId && href.includes('/en/search/')) {
+                            normalizedHref = `/en/subtitles/${subtitleId}`;
+                        }
+                        const fullUrl = new URL(normalizedHref, 'https://www.opensubtitles.org').href;
                         
                         // Add subtitle directly without grouping - keep all subtitles in original order
                     results.push({
@@ -567,8 +652,8 @@ window.addEventListener('load', function() {
                             url: fullUrl,
                             source: 'OpenSubtitles',
                             language: detectedLang, // Keep null if not detected, don't default
-                            isDirectDownload: href.includes('/download/'),
-                            format: href.includes('/download/') ? 'zip' : null
+                            isDirectDownload: normalizedHref.includes('/download/'),
+                            format: normalizedHref.includes('/download/') ? 'zip' : null
                     });
                 }
             });
@@ -605,18 +690,117 @@ window.addEventListener('load', function() {
                 }
             }
         } else if (source === 'jimaku') {
-            doc.querySelectorAll('a.table-data.file-name').forEach(link => {
+            // Entry page contains direct download links like /entry/<id>/download/<file>
+            const candidates = doc.querySelectorAll('a[href*="/download/"]');
+            candidates.forEach(link => {
+                const href = link.getAttribute('href');
+                if (!href) return;
+                const fullUrl = new URL(href, baseUrl).href;
+                const format = detectFileFormatFromUrl(fullUrl);
+                if (!format) return;
                 const title = link.textContent.trim();
-                if (title && !title.includes('[Parent Directory]')) {
-                    results.push({ title, url: new URL(link.getAttribute('href'), baseUrl).href, source: 'Jimaku' });
-                }
+                if (!title) return;
+                results.push({
+                    title,
+                    url: fullUrl,
+                    source: 'Jimaku',
+                    language: 'japanese',
+                    isDirectDownload: true,
+                    format
+                });
             });
         } else if (source === 'kitsunekko') {
-            doc.querySelectorAll('table#flisttable tr > td:first-child a').forEach(link => {
+            // Directory page lists direct file links (srt/ass/zip/rar/7z) under /subtitles/
+            const candidates = doc.querySelectorAll('table#flisttable a, a[href*="/subtitles/"]');
+            candidates.forEach(link => {
+                const href = link.getAttribute('href');
+                if (!href) return;
+                const fullUrl = new URL(href, baseUrl).href;
+                const format = detectFileFormatFromUrl(fullUrl);
+                if (!format) return;
                 const title = link.textContent.trim();
-                if (title && !title.includes('[Parent Directory]')) {
-                    results.push({ title, url: new URL(link.getAttribute('href'), baseUrl).href, source: 'Kitsunekko' });
+                if (!title || title.includes('[Parent Directory]')) return;
+                results.push({
+                    title,
+                    url: fullUrl,
+                    source: 'Kitsunekko',
+                    language: 'japanese',
+                    isDirectDownload: true,
+                    format
+                });
+            });
+        } else if (source === 'subdl') {
+            let pathname = '';
+            try {
+                pathname = new URL(baseUrl).pathname || '';
+            } catch (e) {
+                pathname = '';
+            }
+
+            // 1) Language page contains Quick Download links to dl.subdl.com
+            const quickLinks = doc.querySelectorAll('a[href*="dl.subdl.com/subtitle/"]');
+            if (quickLinks.length > 0) {
+                let langFromPath = null;
+                if (pathname) {
+                    const parts = pathname.split('/').filter(Boolean);
+                    const last = parts[parts.length - 1];
+                    if (last && last !== 'subtitle' && !last.startsWith('sd') && last !== 'season' && !last.endsWith('-season')) {
+                        langFromPath = last;
+                    }
                 }
+                quickLinks.forEach(link => {
+                    const href = link.getAttribute('href');
+                    if (!href) return;
+                    const fullUrl = href.startsWith('http') ? href : new URL(href, 'https://dl.subdl.com').href;
+                    const format = detectFileFormatFromUrl(fullUrl) || 'zip';
+
+                    const li = link.closest('li');
+                    let title = '';
+                    if (li) {
+                        title = (li.textContent || '').replace(/\s+/g, ' ').trim();
+                    } else {
+                        title = (link.textContent || '').replace(/\s+/g, ' ').trim();
+                    }
+                    title = title.replace(/Quick Download/gi, '').replace(/\s+/g, ' ').trim();
+                    if (!title) title = 'Subtitle';
+
+                    const detectedLang = detectLanguage(title, baseUrl, 'subdl') || detectLanguage(title, fullUrl, 'subdl');
+                    results.push({
+                        title,
+                        url: fullUrl,
+                        source: 'Subdl',
+                        language: detectedLang || (langFromPath ? langFromPath.toLowerCase() : null),
+                        isDirectDownload: true,
+                        format
+                    });
+                });
+                return results;
+            }
+
+            // 2) Entry/Season pages: return navigational links (seasons or languages)
+            // Subdl may prefix paths with locale, e.g. /en/subtitle/... /vi/subtitle/...
+            const navLinks = doc.querySelectorAll('a[href*="/subtitle/"]');
+            const seenNav = new Set();
+            navLinks.forEach(link => {
+                const href = link.getAttribute('href');
+                if (!href) return;
+                if (href.includes('/s/info/') || href.includes('/u/')) return;
+                const fullUrl = new URL(href, 'https://subdl.com').href;
+                if (!fullUrl.includes('/subtitle/')) return;
+                if (fullUrl === baseUrl) return;
+                if (seenNav.has(fullUrl)) return;
+                seenNav.add(fullUrl);
+
+                let title = (link.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!title || title.length < 2) return;
+                if (title.toLowerCase() === 'movie home') return;
+
+                results.push({
+                    title,
+                    url: fullUrl,
+                    source: 'Subdl',
+                    isMovie: true
+                });
             });
         } else if (source === 'subscene') {
             // Subscene subtitle list page structure:
@@ -1030,6 +1214,8 @@ window.addEventListener('load', function() {
                     pageResults = parseJimaku(doc, page.query);
                 } else if (page.source === 'kitsunekko') {
                     pageResults = parseKitsunekko(doc, page.query);
+                } else if (page.source === 'subdl') {
+                    pageResults = parseSubdlSearch(doc, page.query);
                 } else if (page.source === 'opensubtitles') {
                     pageResults = parseOpenSubtitles(doc, page.query);
                     
